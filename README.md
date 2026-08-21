@@ -46,6 +46,12 @@ pip install -r requirements.txt
 python src/main.py
 ```
 
+すでに起動しているときに起動しようとすると警告を出して終了します。デバッグ中などで意図的に複数起動したい場合は `--allow-multiple` を付けてください。
+
+```
+python src/main.py --allow-multiple
+```
+
 ### 基本設定
 
 設定は`config/`以下にまとまっています。`config/config.yaml`は初回起動時に`config/config.sample.yaml`から生成されます。主な設定項目は次のとおりです。残りは設定ウィンドウから変更できます。
