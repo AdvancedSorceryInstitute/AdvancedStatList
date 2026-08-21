@@ -14,6 +14,7 @@ from typing import Optional
 
 from PIL import Image
 
+from win.keyboard import is_key_down, key_label
 from win.layered import get_cursor_pos
 from win.window import find_hwnd, get_client_rect, is_foreground
 from win.window_capture import capture_client
@@ -208,6 +209,11 @@ class OverlayController:
         # マビノギが非アクティブなら自動オフ
         if not is_foreground():
             self._hide("マビノギが非アクティブ")
+            return
+
+        # 指定キーを押している間は隠す（下に隠れた画面を見たいときの一時退避）
+        if cfg.hide_key_enabled and is_key_down(cfg.hide_key):
+            self._hide(f"{key_label(cfg.hide_key)} キーで一時非表示")
             return
 
         images = self._capture.grab_slots(client, slots)

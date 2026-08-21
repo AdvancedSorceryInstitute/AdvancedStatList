@@ -14,6 +14,7 @@ from core.controller import ScanController
 from charprofile.manager import ProfileManager
 from charprofile.tab import ProfileTab
 from overlay.config import DEFAULT_SCALE
+from win.keyboard import DEFAULT_KEY, KEY_CHOICES
 from .scroll_frame import ScrollFrame
 from .theme import ACCENT, BG, FG, LINK, MUTED, flat_btn_style, toggle_btn_style
 
@@ -24,6 +25,10 @@ _BACKGROUND_VALUES = {label: value for value, label in _BACKGROUND_LABELS.items(
 # 配置基準の選択肢。設定ファイルには従来どおり game / screen で保存する
 _ANCHOR_LABELS = {"game": "ゲームに追従", "screen": "画面に固定"}
 _ANCHOR_VALUES = {label: value for value, label in _ANCHOR_LABELS.items()}
+
+# 一時非表示に使うキーの選択肢。設定ファイルにはキー名（shift など）で保存する
+_HIDE_KEY_LABELS = {name: label for name, (label, _vk) in KEY_CHOICES.items()}
+_HIDE_KEY_VALUES = {label: name for name, label in _HIDE_KEY_LABELS.items()}
 
 
 class SettingsWindow(tk.Toplevel):
@@ -140,14 +145,15 @@ class SettingsWindow(tk.Toplevel):
         return enabled
 
     def _combobox(self, box: tk.Frame, label: str, row: int,
-                  labels: dict, current: str, fallback: str) -> tk.StringVar:
+                  labels: dict, current: str,
+                  fallback: str) -> tuple[tk.StringVar, ttk.Combobox]:
         tk.Label(box, text=label, bg=BG, fg=FG
                  ).grid(row=row, column=0, sticky="w", pady=6)
         var = tk.StringVar(value=labels.get(current, labels[fallback]))
-        ttk.Combobox(box, textvariable=var, values=list(labels.values()),
-                     state="readonly", width=12
-                     ).grid(row=row, column=1, sticky="w", padx=(12, 0))
-        return var
+        combo = ttk.Combobox(box, textvariable=var, values=list(labels.values()),
+                             state="readonly", width=12)
+        combo.grid(row=row, column=1, sticky="w", padx=(12, 0))
+        return var, combo
 
     def _build_common_group(self, parent: tk.Frame) -> None:
         box = self._group(parent, "共通設定")
@@ -175,10 +181,10 @@ class SettingsWindow(tk.Toplevel):
         self.v_scale = self._entry(box, "拡大率", 0, scale, width=6)
         self.v_gap = self._entry(box, "余白 (px)", 1, cfg.gap, width=6)
         self.v_fps = self._entry(box, "更新レート (fps)", 2, cfg.fps, width=6)
-        self.v_background = self._combobox(box, "背景", 3, _BACKGROUND_LABELS,
-                                           cfg.background, "none")
-        self.v_anchor = self._combobox(box, "配置基準", 4, _ANCHOR_LABELS,
-                                       cfg.anchor, "game")
+        self.v_background, _ = self._combobox(box, "背景", 3, _BACKGROUND_LABELS,
+                                              cfg.background, "none")
+        self.v_anchor, _ = self._combobox(box, "配置基準", 4, _ANCHOR_LABELS,
+                                          cfg.anchor, "game")
 
         # 完全に消えてしまうと見失うので、通常時は下限を設ける
         self.v_opacity = self._scale(box, "不透明度 (%)", 5, cfg.opacity, from_=10)
@@ -188,9 +194,17 @@ class SettingsWindow(tk.Toplevel):
             box, "マウスオーバー時の不透明度 (%)", 7, cfg.hover_opacity)
         self.v_hover_opacity.set_enabled(cfg.hover_fade)
 
+        # ゲーム画面を確認したいときに、押している間だけ退けられるようにする
+        self.v_hide_key_enabled, self._hide_key_toggle_btn = self._toggle(
+            box, "キー押下中は非表示", 8, cfg.hide_key_enabled, self._toggle_hide_key)
+        self.v_hide_key, self._hide_key_combo = self._combobox(
+            box, "非表示にするキー", 9, _HIDE_KEY_LABELS, cfg.hide_key, DEFAULT_KEY)
+        self._hide_key_combo.config(
+            state="readonly" if cfg.hide_key_enabled else "disabled")
+
         tk.Label(box, text="拡大率はキャラクターと解像度ごとの設定です。",
                  bg=BG, fg="#777777", font=("", 8), anchor="w"
-                 ).grid(row=8, column=0, columnspan=2, sticky="w", pady=(10, 0))
+                 ).grid(row=10, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
     def _toggle_tuan_support(self) -> None:
         self._flip(self.v_tuan, self._tuan_toggle_btn)
@@ -199,6 +213,11 @@ class SettingsWindow(tk.Toplevel):
         # 薄くしないなら、その不透明度をいじれても意味がないので触らせない
         enabled = self._flip(self.v_hover_fade, self._hover_toggle_btn)
         self.v_hover_opacity.set_enabled(enabled)
+
+    def _toggle_hide_key(self) -> None:
+        # 使わないなら、どのキーかを選べても意味がないので触らせない
+        enabled = self._flip(self.v_hide_key_enabled, self._hide_key_toggle_btn)
+        self._hide_key_combo.config(state="readonly" if enabled else "disabled")
 
     def _save_settings(self) -> None:
         try:
@@ -230,6 +249,8 @@ class SettingsWindow(tk.Toplevel):
             opacity=self.v_opacity.get(),
             hover_fade=self.v_hover_fade.get(),
             hover_opacity=self.v_hover_opacity.get(),
+            hide_key_enabled=self.v_hide_key_enabled.get(),
+            hide_key=_HIDE_KEY_VALUES.get(self.v_hide_key.get(), DEFAULT_KEY),
         )
         if not saved:
             # 拡大率はキャラクターと解像度ごとの設定なので、保存先を決められない

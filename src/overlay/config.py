@@ -19,6 +19,8 @@ from typing import Optional
 
 import yaml
 
+from win.keyboard import DEFAULT_KEY, normalize_key
+
 # クイックスロットのアイコン実測サイズ（クライアント 2560x1440 時）。
 # 28 だとアイコンのフチが切れるため 29 にしている
 DEFAULT_SLOT_SIZE = 29
@@ -158,6 +160,8 @@ class OverlayConfig:
         self.opacity: int = 100          # 表示の不透明度（%）
         self.hover_fade: bool = False    # カーソルが重なったら薄くする
         self.hover_opacity: int = 30     # 薄くしたときの不透明度（%）
+        self.hide_key_enabled: bool = True   # キーを押している間だけ隠す
+        self.hide_key: str = DEFAULT_KEY     # 隠すのに使うキー
         # キャラクタープロファイル ID -> 解像度キー -> 設定
         self.profiles: dict[str, dict[str, Profile]] = {}
         self._current_pid = default_profile_id
@@ -183,6 +187,9 @@ class OverlayConfig:
             self.hover_fade = bool(data.get("hover_fade", self.hover_fade))
             self.hover_opacity = _clamp_percent(data.get("hover_opacity",
                                                          self.hover_opacity))
+            self.hide_key_enabled = bool(data.get("hide_key_enabled",
+                                                  self.hide_key_enabled))
+            self.hide_key = normalize_key(data.get("hide_key", self.hide_key))
 
             raw = data.get("profiles") or {}
             if self._is_legacy(raw):
@@ -254,6 +261,8 @@ class OverlayConfig:
                 "opacity": self.opacity,
                 "hover_fade": self.hover_fade,
                 "hover_opacity": self.hover_opacity,
+                "hide_key_enabled": self.hide_key_enabled,
+                "hide_key": self.hide_key,
                 "profiles": {
                     pid: {
                         key: {
