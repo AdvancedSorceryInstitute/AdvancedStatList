@@ -9,6 +9,7 @@ from tkinter import messagebox, ttk
 from typing import Callable
 
 from .add_buff import AddBuffApp
+from version import __version__
 from core.controller import ScanController
 from charprofile.manager import ProfileManager
 from charprofile.tab import ProfileTab
@@ -39,6 +40,11 @@ class SettingsWindow(tk.Toplevel):
 
         notebook = ttk.Notebook(self, width=520, height=620)
         notebook.pack(fill="both", expand=True, padx=6, pady=6)
+
+        # 不具合報告のときに参照できるよう、バージョンをタブ列の右端に重ねる。
+        # place なのでレイアウト上の高さを取らず、余白が増えない
+        tk.Label(self, text=f"v{__version__}", bg=BG, fg=MUTED, font=("", 8)
+                 ).place(in_=notebook, relx=1.0, x=-10, y=7, anchor="ne")
 
         tab_settings = ttk.Frame(notebook)
         notebook.add(tab_settings, text="  設定  ")

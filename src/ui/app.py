@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw
 from pystray import Icon, Menu, MenuItem
 from tkinterdnd2 import TkinterDnD
 
+from version import __version__
 from core.controller import ScanController, BASE_DIR, BUFFS_DIR
 from overlay.controller import OverlayController
 from overlay.tab import OverlayTab
@@ -45,7 +46,7 @@ class App:
         self.manager = manager
         self.root = TkinterDnD.Tk()
         self.root.withdraw()  # 構築完了まで非表示
-        self.root.title("AdvancedStatList")
+        self.root.title(f"AdvancedStatList v{__version__}")
         self.root.configure(bg=self.BG)
         if _ICON_ICO_PATH.exists():
             # -default 指定にすると、以降に作る Toplevel（設定・座標指定など）にも
@@ -294,7 +295,7 @@ class App:
             ),
             MenuItem("終了", lambda icon, item: self.root.after(0, self._quit)),
         )
-        return Icon("AdvancedStatList", img, "AdvancedStatList", menu)
+        return Icon("AdvancedStatList", img, f"AdvancedStatList v{__version__}", menu)
 
     def _toggle_scan_tray(self, icon: Icon, item) -> None:
         def do() -> None:
