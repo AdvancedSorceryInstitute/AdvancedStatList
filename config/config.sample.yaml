@@ -1,0 +1,17 @@
+banner_y_offset: 80
+debug_save_auto: false
+match_threshold: 0.9
+monitor_index: 1
+ocr_region:
+  debug_save_region: false
+  height_ratio: 1.2
+  offset_x: 195
+  offset_y: 0
+  width: 75
+scan_interval: 11
+template_dir: src/core/templates
+template_threshold: 0.7
+tuan_check_threshold: 10
+tuan_support_enabled: true
+volume: 80
+warning_threshold: 30

@@ -1,0 +1,8 @@
+mss
+opencv-python
+pyyaml
+numpy
+Pillow
+tkinterdnd2
+pystray
+lameenc

@@ -1,0 +1,5 @@
+display_name: 行進曲
+enabled: true
+name: MarchSong
+type: music_buff
+warning_threshold: 30

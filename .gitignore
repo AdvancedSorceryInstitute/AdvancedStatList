@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# ビルド成果物
+dist/
+src/build/
+
+# ユーザー環境ごとに生成される設定とデータ。
+# config/ 配下で管理するのは config.sample.yaml だけで、
+# config.yaml・profiles.yaml・overlay.yaml と、
+# それらが使う profiles/・overlay/slots/ はすべて無視する
+# （キャラクター名や画面座標が入るため公開・配布しない）
+/config/*
+!/config/config.sample.yaml
+
+# デバッグ画像の出力先（config.yaml の debug_save_* を有効にすると生成される）
+/debug/
+
+# 開発用の作業領域（設計メモ、素材原本、検証スクリプトなど）
+/_dev/
+
+# Claude Code のローカル設定
+/.claude/
+
+# バフ定義はホワイトリスト方式。公開するバフだけをここに明示する。
+# 手元で試しているバフを buffs/ に足しても、この一覧に加えない限り追跡されない
+/buffs/*
+!/buffs/BattlefieldOverture/
+!/buffs/MarchSong/
+!/buffs/Vivace/
+!/buffs/SongOfTuan/
+!/buffs/MagicPowerBoost/
+!/buffs/Fateweaver/
+!/buffs/ham_burning/

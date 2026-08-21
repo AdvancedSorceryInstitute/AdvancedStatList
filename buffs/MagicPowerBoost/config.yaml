@@ -1,0 +1,5 @@
+name: MagicPowerBoost
+display_name: 魔法攻撃力強化
+type: nomal
+enabled: true              # false にするとスキャン・通知をスキップ
+warning_threshold: 10      # 何秒前に通知するか

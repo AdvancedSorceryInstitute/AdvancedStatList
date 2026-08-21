@@ -1,0 +1,5 @@
+display_name: 戦場の序曲
+enabled: true
+name: BattlefieldOverture
+type: music_buff
+warning_threshold: 30

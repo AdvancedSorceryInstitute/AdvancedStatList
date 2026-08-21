@@ -1,0 +1,5 @@
+name: Fateweaver
+display_name: 鋭利
+type: normal
+enabled: true              # false にするとスキャン・通知をスキップ
+warning_threshold: 5      # 何秒前に通知するか

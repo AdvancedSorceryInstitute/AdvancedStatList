@@ -1,0 +1,4 @@
+name: SongOfTuan
+display_name: トゥアンの歌
+type: special              # 延長支援の判定用に残り時間のみタイマー管理。通知・バフ管理タブ表示はしない
+enabled: true

@@ -1,0 +1,5 @@
+name: Vivace
+display_name: ヴィヴァーチェ
+type: music_buff
+enabled: true              # false にするとスキャン・通知をスキップ
+warning_threshold: 30      # 何秒前に通知するか
