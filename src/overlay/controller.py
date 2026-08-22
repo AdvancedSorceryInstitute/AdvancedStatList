@@ -6,6 +6,7 @@
 
 位置調整モードでは外周の掴みしろをドラッグして全体を移動でき、
 アイコンをクリックで持ち上げ、もう一度クリックしてグリッドの好きなセルへ置ける。
+Esc を押すと調整モードを抜ける。
 """
 
 import re
@@ -14,7 +15,7 @@ from typing import Optional
 
 from PIL import Image
 
-from win.keyboard import is_key_down, key_label
+from win.keyboard import VK_ESCAPE, is_key_down, is_vk_down, key_label
 from win.layered import get_cursor_pos
 from win.window import find_hwnd, get_client_rect, is_foreground
 from win.window_capture import capture_client
@@ -175,6 +176,11 @@ class OverlayController:
     def _tick(self) -> None:
         if self._capture is None:
             self._capture = SlotCapture()
+
+        # 位置調整はゲームの上でマウスを操作するので、GUI へ戻らず Esc でも終われる。
+        # 変更はその都度保存されているため、抜けるだけでよい
+        if self._adjust_mode and is_vk_down(VK_ESCAPE):
+            self.exit_adjust_mode()
 
         cfg = self.config
 

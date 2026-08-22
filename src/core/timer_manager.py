@@ -70,6 +70,11 @@ class TimerManager:
                 self._timers[buff_name].warned = False
                 self._timers[buff_name].tuan_warned = False
 
+    def remove(self, buff_name: str) -> None:
+        """タイマーごと取り除く（バフを削除したとき）。"""
+        with self._lock:
+            self._timers.pop(buff_name, None)
+
     def get_all(self) -> dict[str, BuffTimer]:
         with self._lock:
             return {k: v for k, v in self._timers.items()}

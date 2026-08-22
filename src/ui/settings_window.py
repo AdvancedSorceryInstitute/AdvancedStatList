@@ -16,6 +16,7 @@ from charprofile.tab import ProfileTab
 from overlay.config import DEFAULT_SCALE
 from win.keyboard import DEFAULT_KEY, KEY_CHOICES
 from .scroll_frame import ScrollFrame
+from .spin import bind_spin
 from .theme import ACCENT, BG, FG, LINK, MUTED, flat_btn_style, toggle_btn_style
 
 # 背景の選択肢。設定ファイルには従来どおり none / dark で保存する
@@ -53,7 +54,10 @@ class SettingsWindow(tk.Toplevel):
 
         tab_settings = ttk.Frame(notebook)
         notebook.add(tab_settings, text="  設定  ")
-        self._build_settings_tab(tab_settings)
+        # 項目がタブの高さに収まらないので、はみ出したらスクロールできるようにする
+        settings_scroll = ScrollFrame(tab_settings)
+        settings_scroll.pack(fill="both", expand=True)
+        self._build_settings_tab(settings_scroll.body)
 
         tab_add = ttk.Frame(notebook)
         notebook.add(tab_add, text="  バフ追加  ")
@@ -83,7 +87,7 @@ class SettingsWindow(tk.Toplevel):
 
     # ------------------------------------------------------------ 設定タブ
 
-    def _build_settings_tab(self, parent: ttk.Frame) -> None:
+    def _build_settings_tab(self, parent: tk.Misc) -> None:
         frame = tk.Frame(parent, bg=BG)
         frame.pack(fill="both", expand=True, padx=16, pady=16)
 
@@ -106,13 +110,16 @@ class SettingsWindow(tk.Toplevel):
         return box
 
     def _entry(self, box: tk.Frame, label: str, row: int, value,
-               width: int = 8) -> tk.StringVar:
+               width: int = 8, step: float = 1, minimum: float | None = None,
+               decimals: int = 0) -> tk.StringVar:
         tk.Label(box, text=label, bg=BG, fg=FG
                  ).grid(row=row, column=0, sticky="w", pady=6)
         var = tk.StringVar(value=str(value))
-        tk.Entry(box, textvariable=var, bg="#2a2a2a", fg="white",
-                 insertbackground="white", relief="flat", bd=4, width=width,
-                 ).grid(row=row, column=1, sticky="w", padx=(12, 0))
+        ent = tk.Entry(box, textvariable=var, bg="#2a2a2a", fg="white",
+                       insertbackground="white", relief="flat", bd=4, width=width)
+        ent.grid(row=row, column=1, sticky="w", padx=(12, 0))
+        # 選んでいる間は十字キー上下とホイールで増減できるようにする
+        bind_spin(ent, var, step=step, minimum=minimum, decimals=decimals)
         return var
 
     def _scale(self, box: tk.Frame, label: str, row: int, value: int,
@@ -159,7 +166,7 @@ class SettingsWindow(tk.Toplevel):
         box = self._group(parent, "共通設定")
 
         self.v_interval = self._entry(box, "スキャン間隔 (秒)", 0,
-                                      self.controller._scan_interval)
+                                      self.controller._scan_interval, minimum=1)
         self.v_volume = self._scale(box, "通知音量", 1,
                                     self.controller.notifier._volume)
         self.v_banner_y = self._entry(box, "バナーY座標 (px)", 2,
@@ -178,9 +185,11 @@ class SettingsWindow(tk.Toplevel):
 
         key = self._overlay.current_key()
         scale = cfg.scale_of(key) if key is not None else DEFAULT_SCALE
-        self.v_scale = self._entry(box, "拡大率", 0, scale, width=6)
-        self.v_gap = self._entry(box, "余白 (px)", 1, cfg.gap, width=6)
-        self.v_fps = self._entry(box, "更新レート (fps)", 2, cfg.fps, width=6)
+        # 拡大率だけは 1 刻みでは粗すぎるので 0.1 ずつ動かす
+        self.v_scale = self._entry(box, "拡大率", 0, scale, width=6,
+                                   step=0.1, minimum=0.1, decimals=1)
+        self.v_gap = self._entry(box, "余白 (px)", 1, cfg.gap, width=6, minimum=0)
+        self.v_fps = self._entry(box, "更新レート (fps)", 2, cfg.fps, width=6, minimum=1)
         self.v_background, _ = self._combobox(box, "背景", 3, _BACKGROUND_LABELS,
                                               cfg.background, "none")
         self.v_anchor, _ = self._combobox(box, "配置基準", 4, _ANCHOR_LABELS,
@@ -282,6 +291,11 @@ class ValueScale(tk.Frame):
             troughcolor="#3a3a3a", activebackground=ACCENT, length=180,
         )
         self._scale.pack(side="left")
+        # つまみを掴んだあともホイールで動かせるよう、クリックで入力先にする
+        self._scale.bind("<Button-1>", lambda _e: self._scale.focus_set(), add="+")
+        # Scale 標準の上下キーは向きが逆なので、ここで上げ下げを揃える
+        bind_spin(self._scale, self.var, minimum=from_, maximum=to,
+                  active=lambda: str(self._scale.cget("state")) != "disabled")
 
         self._value_lbl = tk.Label(self, textvariable=self.var, bg=BG, fg=LINK,
                                    width=4, font=("", 9, "underline"), cursor="hand2")
@@ -293,6 +307,7 @@ class ValueScale(tk.Frame):
         self._entry = tk.Entry(self, textvariable=self._entry_var, width=4,
                                bg="#2a2a2a", fg="white", insertbackground="white",
                                relief="flat", bd=2, justify="center")
+        bind_spin(self._entry, self._entry_var, minimum=from_, maximum=to)
         self._entry.bind("<Return>", self._commit)
         self._entry.bind("<FocusOut>", self._commit)
         self._entry.bind("<Escape>", self._cancel)

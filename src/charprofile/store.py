@@ -262,6 +262,15 @@ class ProfileStore:
             profile.buff_enabled[name] = enabled
         self.save()
 
+    def forget_buff(self, name: str) -> None:
+        """バフの設定を全プロファイルから取り除く（バフを削除したとき）。"""
+        with self._lock:
+            for profile in self.profiles:
+                if name in profile.buff_order:
+                    profile.buff_order.remove(name)
+                profile.buff_enabled.pop(name, None)
+        self.save()
+
     # ------------------------------------------------------------ 指紋
 
     def fingerprint_dir(self, profile_id: str) -> Path:

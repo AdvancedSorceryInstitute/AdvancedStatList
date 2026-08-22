@@ -1,7 +1,7 @@
 import ctypes
 import threading
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from typing import Optional
 
 from PIL import Image, ImageDraw
@@ -58,6 +58,7 @@ class App:
         self._buff_rows: dict[str, dict] = {}
         self._icons: dict[str, object] = {}  # ImageTk.PhotoImage の参照保持用
         self._settings_window: Optional[SettingsWindow] = None
+        self._buff_menu: Optional[tk.Menu] = None
 
         self._apply_style()
         self._build_ui()
@@ -145,7 +146,11 @@ class App:
         tk.Label(hdr, text="残り時間", bg=self.BG, fg="#888888").pack(side="right")
 
         self._buff_rows_frame = tk.Frame(parent, bg=self.BG)
-        self._buff_rows_frame.pack(fill="both", expand=True, padx=12, pady=(2, 10))
+        self._buff_rows_frame.pack(fill="both", expand=True, padx=12, pady=(2, 4))
+
+        tk.Label(parent, text="バフを右クリックすると削除できます。",
+                 bg=self.BG, fg="#777777", anchor="w", font=("", 8)
+                 ).pack(fill="x", padx=12, pady=(0, 10))
 
         self._refresh_buff_rows()
 
@@ -218,6 +223,8 @@ class App:
 
             self._buff_rows[name] = {"time_label": time_lbl}
 
+            self._bind_context_menu(row, name)
+
     def _toggle_btn_style(self, enabled: bool) -> dict:
         return ui_theme.toggle_btn_style(enabled)
 
@@ -231,6 +238,44 @@ class App:
             self.controller.set_buff_enabled(name, en)
 
         return cmd
+
+    # ------------------------------------------------------------ 右クリックメニュー
+
+    def _bind_context_menu(self, widget: tk.Misc, name: str) -> None:
+        """行のどこを右クリックしてもメニューを開けるようにする。"""
+        widget.bind("<Button-3>", lambda e, n=name: self._popup_buff_menu(e, n))
+        for child in widget.winfo_children():
+            self._bind_context_menu(child, name)
+
+    def _popup_buff_menu(self, event: tk.Event, name: str) -> None:
+        # 開くたびに作り直す。行を組み直しても古い名前が残らない
+        if self._buff_menu is not None:
+            self._buff_menu.destroy()
+        menu = tk.Menu(self.root, tearoff=0, bg="#2a2a2a", fg=self.FG,
+                       activebackground=self.ACCENT, activeforeground="white",
+                       bd=0, relief="flat")
+        menu.add_command(label="削除", command=lambda: self._delete_buff(name))
+        self._buff_menu = menu
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _delete_buff(self, name: str) -> None:
+        display_name = self.controller.buff_configs.get(name, {}).get("display_name", name)
+        if not messagebox.askyesno(
+                "バフの削除",
+                f"「{display_name}」を削除します。\n"
+                f"buffs/{name}/ をごみ箱へ移動し、\n"
+                "全プロファイルの監視設定からも取り除きます。",
+                parent=self.root):
+            return
+        if not self.controller.delete_buff(name):
+            messagebox.showerror("バフの削除",
+                                 f"buffs/{name}/ をごみ箱へ移動できませんでした。",
+                                 parent=self.root)
+            return
+        self._refresh_buff_rows()
 
     def _move_buff(self, name: str, direction: int) -> None:
         """direction: -1=上へ, +1=下へ"""

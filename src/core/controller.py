@@ -13,6 +13,7 @@ from .ocr import OCRReader
 from .timer_manager import TimerManager
 from notify.notifier import Notifier
 from charprofile.store import CharacterProfile, ProfileStore
+from win.trash import send_to_trash
 
 if getattr(sys, 'frozen', False):
     BASE_DIR = Path(sys.executable).parent
@@ -231,6 +232,18 @@ class ScanController:
         self.scanner.reload_templates()
         with self._lock:
             self.buff_configs = self._load_buff_configs()
+
+    def delete_buff(self, name: str) -> bool:
+        """バフの定義をごみ箱へ送り、全プロファイルの設定からも取り除く。
+
+        ごみ箱へ移せなかったときは何も消さずに False を返す。
+        """
+        if not send_to_trash(BUFFS_DIR / name):
+            return False
+        self._store.forget_buff(name)
+        self.reload_buffs()
+        self.timer_manager.remove(name)
+        return True
 
     def update_settings(self, scan_interval: Optional[int] = None, volume: Optional[int] = None, banner_y_offset: Optional[int] = None, tuan_support_enabled: Optional[bool] = None) -> None:
         with open(CONFIG_PATH, encoding="utf-8") as f:

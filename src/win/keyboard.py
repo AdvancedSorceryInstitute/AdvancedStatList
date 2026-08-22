@@ -18,6 +18,9 @@ KEY_CHOICES: dict[str, tuple[str, int]] = {
 
 DEFAULT_KEY = "shift"
 
+# 選択肢には出さないが、内部で使うキー
+VK_ESCAPE = 0x1B
+
 _user32 = ctypes.windll.user32
 _user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
 _user32.GetAsyncKeyState.restype = ctypes.c_short
@@ -36,6 +39,10 @@ def key_label(name: str) -> str:
 
 def is_key_down(name: str) -> bool:
     """そのキーが今押されているか。"""
-    vk = KEY_CHOICES[normalize_key(name)][1]
+    return is_vk_down(KEY_CHOICES[normalize_key(name)][1])
+
+
+def is_vk_down(vk: int) -> bool:
+    """仮想キーコードを指定して押下状態を見る。"""
     # 最上位ビットが立っていれば押下中（下位ビットは前回呼び出し以降に押されたか）
     return bool(_user32.GetAsyncKeyState(vk) & 0x8000)

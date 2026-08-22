@@ -14,6 +14,7 @@ from tkinterdnd2 import DND_FILES, TkinterDnD
 
 from core.controller import BUFFS_DIR
 from notify.audio_convert import wav_to_mp3
+from .spin import bind_spin
 
 # システム予約バフID（上書きすると専用の config が壊れるため追加禁止）
 RESERVED_BUFF_IDS = {"SongOfTuan"}
@@ -135,18 +136,21 @@ class AddBuffApp:
         form = tk.Frame(self.root, bg=self.BG)
         form.pack(fill="x", padx=14, pady=(14, 6))
 
-        def field(text: str, row: int, default="") -> tk.StringVar:
+        def field(text: str, row: int, default="", numeric: bool = False) -> tk.StringVar:
             tk.Label(form, text=text, bg=self.BG, fg=self.FG,
                      anchor="w", width=10).grid(row=row, column=0, sticky="w", pady=4)
             var = tk.StringVar(value=default)
             e = tk.Entry(form, textvariable=var, bg=self.ENTRY_BG, fg="#ffffff",
                          insertbackground="white", relief="flat", bd=4, width=30)
             e.grid(row=row, column=1, sticky="ew", padx=(8, 0), pady=4)
+            if numeric:
+                # 選んでいる間は十字キー上下とホイールで増減できるようにする
+                bind_spin(e, var, minimum=0)
             return var
 
         self.v_name = field("バフID *", 0)
         self.v_display = field("表示名 *", 1)
-        self.v_threshold = field("通知秒数", 2, "30")
+        self.v_threshold = field("通知秒数", 2, "30", numeric=True)
 
         tk.Label(form, text="種別", bg=self.BG, fg=self.FG, anchor="w",
                  width=10).grid(row=3, column=0, sticky="w", pady=4)

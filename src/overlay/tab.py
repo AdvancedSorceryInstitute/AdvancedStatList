@@ -12,6 +12,7 @@ from typing import Optional
 
 from PIL import Image, ImageTk
 
+from ui.spin import bind_spin
 from win.window import find_hwnd, get_client_rect
 from win.window_capture import capture_client
 
@@ -40,6 +41,7 @@ class OverlayTab:
         self._master = master
         self._rows: dict[str, dict] = {}
         self._previews: dict[str, ImageTk.PhotoImage] = {}
+        self._adjust_shown = False   # ボタンに出している調整モードの状態
 
         self._build()
         self._refresh_rows()
@@ -224,14 +226,27 @@ class OverlayTab:
     def _toggle_adjust(self) -> None:
         if self._overlay.adjust_mode:
             self._overlay.exit_adjust_mode()
-            self._adjust_btn.config(text="位置調整", bg="#3a3a3a", fg=_FG)
-            self._hint_lbl.config(text="")
         else:
             self._overlay.enter_adjust_mode()
+        self._sync_adjust_ui()
+
+    def _sync_adjust_ui(self) -> None:
+        """ボタンと説明を調整モードの状態に合わせる。
+
+        Esc でも抜けられるので、ボタン以外から切り替わることがある。
+        """
+        adjusting = self._overlay.adjust_mode
+        if adjusting == self._adjust_shown:
+            return
+        self._adjust_shown = adjusting
+        if adjusting:
             self._adjust_btn.config(text="調整を終了", bg="#8a5a00", fg="white")
             self._hint_lbl.config(
                 text="外周の枠をドラッグすると全体を移動できます。"
                      "アイコンをクリックで持ち上げ、もう一度クリックで置きます。")
+        else:
+            self._adjust_btn.config(text="位置調整", bg="#3a3a3a", fg=_FG)
+            self._hint_lbl.config(text="")
 
     def _move(self, key: str, slot_id: str, direction: int) -> None:
         self._config.move_slot(key, slot_id, direction)
@@ -340,6 +355,7 @@ class OverlayTab:
         text, color = _STATE_TEXT.get(self._overlay.state, ("● 待機中", "#ffaa00"))
         self._state_lbl.config(text=text, fg=color)
         self._detail_lbl.config(text=self._overlay.detail)
+        self._sync_adjust_ui()
         self._master.after(500, self._poll)
 
 
@@ -369,6 +385,8 @@ class PositionDialog(tk.Toplevel):
             ent = tk.Entry(body, textvariable=var, bg="#2a2a2a", fg="white",
                            insertbackground="white", relief="flat", bd=4, width=8)
             ent.grid(row=1 + i, column=1, sticky="w", padx=(8, 0))
+            # 選んでいる間は十字キー上下とホイールで 1px ずつ動かせるようにする
+            bind_spin(ent, var, minimum=0)
             self._vars[name] = var
             if i == 0:
                 ent.focus_set()
