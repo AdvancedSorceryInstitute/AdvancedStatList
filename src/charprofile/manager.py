@@ -123,6 +123,8 @@ class ProfileManager:
         if hwnd != self._last_hwnd:
             self._last_hwnd = hwnd
             if hwnd is None:
+                # ゲームが閉じただけなので、判別できなかった旨は出さない
+                self.last_result = None
                 self._end_detect()
             else:
                 self._begin_detect()
@@ -138,7 +140,7 @@ class ProfileManager:
             return
 
         self._retries_left -= 1
-        # 識別範囲や指紋が未設定なら、待っても状況は変わらないので粘らない
+        # 識別範囲も指紋も1つも無いなら、待っても状況は変わらないので粘らない
         if not result.retriable or self._retries_left <= 0:
             print(f"キャラクターを判別できませんでした: {result.reason}")
             # 別キャラの設定を勝手に当てるより、今のプロファイルを残すほうが害が小さい

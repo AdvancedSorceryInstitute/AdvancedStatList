@@ -283,6 +283,14 @@ class ProfileStore:
     def has_fingerprint(self, profile_id: str, key: str) -> bool:
         return self.fingerprint_path(profile_id, key).exists()
 
+    def has_any_fingerprint(self) -> bool:
+        """解像度を問わず、指紋が1枚でも記録されているか。"""
+        return any(
+            path.is_file()
+            for profile in self.profiles
+            for path in self.fingerprint_dir(profile.id).glob("fp_*.png")
+        )
+
     def region(self, key: str) -> Optional[tuple[int, int, int, int]]:
         return self.detect.regions.get(key)
 

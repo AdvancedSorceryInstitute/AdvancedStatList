@@ -21,6 +21,7 @@ class ProfileBar:
         self._manager = manager
         self._master = master
         self._message_after: str = ""
+        self._was_detecting = False
 
         self._frame = tk.Frame(master, bg=BG)
         self._frame.pack(fill="x", padx=8, pady=(8, 0))
@@ -71,9 +72,17 @@ class ProfileBar:
 
     def refresh_status(self) -> None:
         """判別中かどうかの表示を更新する（GUI のポーリングから呼ぶ）。"""
+        detecting = self._manager.detecting
+        if self._was_detecting and not detecting:
+            # 判別を諦めたときは黙って消さず、理由を残す（成功時は名前が変わる）
+            result = self._manager.last_result
+            if result is not None and not result.ok:
+                self._show_message(f"判別できませんでした: {result.reason}", "#ffaa00")
+        self._was_detecting = detecting
+
         if self._message_after:
             return   # 判別結果を出している間は上書きしない
-        text = "キャラクターを判別中..." if self._manager.detecting else ""
+        text = "キャラクターを判別中..." if detecting else ""
         self._message_lbl.config(text=text, fg=MUTED)
 
     # ------------------------------------------------------------ 操作

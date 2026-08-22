@@ -116,7 +116,10 @@ def identify(store: ProfileStore) -> IdentifyResult:
     key = client_key(client)
     rect = store.region(key)
     if rect is None:
-        return IdentifyResult(reason=f"{key} の識別範囲が未設定です", retriable=False)
+        # ゲーム起動直後はウィンドウのサイズが確定しておらず、登録済みの解像度と
+        # 一致しないことがある。範囲が1つも無いときだけ、待っても無駄と判断する
+        return IdentifyResult(reason=f"{key} の識別範囲が未設定です",
+                              retriable=bool(store.detect.regions))
 
     image = grab_region(rect)
     if image is None:
@@ -133,7 +136,9 @@ def identify(store: ProfileStore) -> IdentifyResult:
             scores.append((value, profile))
 
     if not scores:
-        return IdentifyResult(reason=f"{key} の識別画像が未登録です", retriable=False)
+        # 上と同じ理由で、指紋が1枚も無いときだけ諦める
+        return IdentifyResult(reason=f"{key} の識別画像が未登録です",
+                              retriable=store.has_any_fingerprint())
 
     scores.sort(key=lambda s: s[0], reverse=True)
     best, profile = scores[0]
