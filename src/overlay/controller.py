@@ -20,7 +20,7 @@ from win.layered import get_cursor_pos
 from win.window import find_hwnd, get_client_rect, is_foreground
 from win.window_capture import capture_client
 
-from .capture import SlotCapture, bounding_rect
+from .capture import SlotCapture
 from .config import OverlayConfig, Profile, Slot
 from .layout import FRAME, GridMetrics, compose, compose_adjust
 from .layered_window import OverlayWindow
@@ -423,8 +423,13 @@ class OverlayController:
 
         スロットに重なると自分自身を映して入れ子になり、
         EXIT ボタンに重なるとミッション判定がオーバーレイを見てしまう。
+
+        スロット群の包絡矩形ではなく1枚ずつ見る。離れた位置のスロットがあると
+        包絡矩形が画面の大半を覆い、実際には重なっていなくても警告が出るため。
         """
-        targets = [bounding_rect(slots)]
+        targets: list[Optional[tuple[int, int, int, int]]] = [
+            (s.x, s.y, s.w, s.h) for s in slots
+        ]
         if self.config.mission_only:
             targets.append(self.config.mission_detect.region(key))
 
