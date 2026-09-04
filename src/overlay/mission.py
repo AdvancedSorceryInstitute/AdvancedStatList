@@ -31,10 +31,15 @@ class MissionDetector:
 
     テンプレートは解像度ごとに1枚。読み込みは使い回し、
     解像度が変わったときだけ読み直す。
+
+    記録済みのものが無ければ同梱の既定テンプレート（assets/mission/）を使うので、
+    既定の解像度なら登録しなくてもそのまま判定できる。
     """
 
-    def __init__(self, templates_dir: Path, settings: MissionDetect):
+    def __init__(self, templates_dir: Path, defaults_dir: Path,
+                 settings: MissionDetect):
         self._dir = templates_dir
+        self._defaults_dir = defaults_dir
         self._settings = settings
 
         self._loaded_key: Optional[str] = None
@@ -47,11 +52,27 @@ class MissionDetector:
     # ------------------------------------------------------------ 登録
 
     def template_path(self, key: str) -> Path:
+        """記録先。ここに無ければ同梱の既定テンプレートを使う。"""
         return self._dir / f"exit_{key}.png"
 
+    def _default_path(self) -> Path:
+        """同梱テンプレート。解像度によらず1枚を当てる（default_mission_region と対）。"""
+        return self._defaults_dir / "exit.png"
+
+    def status(self, key: str) -> str:
+        """その解像度の判定材料の出どころ。custom | default | none
+
+        範囲とテンプレートは対で使うので、片方でも欠けていれば判定できない。
+        """
+        if self._settings.region(key) is None:
+            return "none"
+        if self.template_path(key).exists():
+            return "custom"
+        return "default" if self._default_path().exists() else "none"
+
     def configured(self, key: str) -> bool:
-        """その解像度で判定できる状態か（範囲とテンプレートの両方が要る）。"""
-        return self._settings.region(key) is not None and self.template_path(key).exists()
+        """その解像度で判定できる状態か。"""
+        return self.status(key) != "none"
 
     def save_template(self, key: str, shot: Image.Image,
                       rect: tuple[int, int, int, int]) -> bool:
@@ -79,6 +100,8 @@ class MissionDetector:
         if self._loaded_key == key:
             return self._template
         path = self.template_path(key)
+        if not path.exists():
+            path = self._default_path()
         template = None
         if path.exists():
             try:

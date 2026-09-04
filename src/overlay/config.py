@@ -31,14 +31,41 @@ NEW_SLOT_COLUMNS = 4
 
 DEFAULT_SCALE = 2.0
 
-# 旧形式（profiles 直下が解像度キー）の判定に使う
-_RESOLUTION_KEY = re.compile(r"^\d+x\d+$")
+# 旧形式（profiles 直下が解像度キー）の判定と、解像度キーの分解に使う
+_RESOLUTION_KEY = re.compile(r"^(\d+)x(\d+)$")
 
 # ミッション判定の既定値。GUI には出さず、必要なら overlay.yaml で調整する
 DEFAULT_MISSION_THRESHOLD = 0.8    # EXIT ボタンとみなす相関
 DEFAULT_MISSION_INTERVAL = 0.5     # 判定の間隔（秒）
 DEFAULT_MISSION_GRACE = 1.5        # 見失ってからミッション外と決めるまでの猶予（秒）
 DEFAULT_MISSION_CURSOR_MARGIN = 24  # この範囲にカーソルがあれば判定を保留（px）
+
+# EXIT ボタンの既定の位置。同梱テンプレート assets/mission/exit.png と対で、
+# 登録しなくてもそのまま使えるようにしてある。
+# ボタンの外枠は半透明で背景がうっすら透けるため、実測した枠から 2px 内側を取る。
+# 大きさがテンプレートと一致していないと判定できないので必ず対で変えること
+MEASURED_MISSION_KEY = "2560x1440"   # 実測した解像度
+_EXIT_SIZE = (56, 50)
+_EXIT_MARGIN = (14, 33)              # 画面の右端・上端からの距離
+
+
+def default_mission_region(key: str) -> Optional[tuple[int, int, int, int]]:
+    """同梱テンプレートに対応する EXIT ボタンの位置。
+
+    ボタンは画面の右上に固定で出るので、右端・上端からの距離で当てはめる。
+    実測したのは MEASURED_MISSION_KEY の解像度だけで、他の解像度はボタンの
+    大きさも同じだと見なした暫定値。合わない場合は「範囲を指定」で登録し直す。
+    """
+    m = _RESOLUTION_KEY.match(key)
+    if m is None:
+        return None
+    width, height = int(m.group(1)), int(m.group(2))
+    w, h = _EXIT_SIZE
+    x = width - _EXIT_MARGIN[0] - w
+    y = _EXIT_MARGIN[1]
+    if x < 0 or y + h > height:
+        return None
+    return (x, y, w, h)
 
 
 def _clamp_percent(value) -> int:
@@ -160,7 +187,11 @@ class MissionDetect:
     regions: dict[str, tuple[int, int, int, int]] = field(default_factory=dict)
 
     def region(self, key: str) -> Optional[tuple[int, int, int, int]]:
-        return self.regions.get(key)
+        """EXIT ボタンの範囲。指定が無ければ同梱の既定値を使う。"""
+        return self.regions.get(key) or default_mission_region(key)
+
+    def has_custom_region(self, key: str) -> bool:
+        return key in self.regions
 
 
 class OverlayConfig:

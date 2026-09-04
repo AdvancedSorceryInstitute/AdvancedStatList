@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from core.controller import ScanController, CONFIG_DIR, CONFIG_PATH
+from core.controller import ScanController, BASE_DIR, CONFIG_DIR, CONFIG_PATH
 from ui.app import App
 from overlay.controller import OverlayController
 from charprofile.manager import ProfileManager
@@ -14,6 +14,8 @@ from win import single_instance
 OVERLAY_CONFIG_PATH = CONFIG_DIR / "overlay.yaml"
 OVERLAY_SLOTS_DIR = CONFIG_DIR / "overlay" / "slots"
 OVERLAY_MISSION_DIR = CONFIG_DIR / "overlay" / "mission"
+# EXIT ボタンの既定テンプレート（登録しなくても既定の解像度なら判定できる）
+MISSION_DEFAULTS_DIR = BASE_DIR / "assets" / "mission"
 PROFILES_PATH = CONFIG_DIR / "profiles.yaml"
 PROFILES_DIR = CONFIG_DIR / "profiles"
 
@@ -38,7 +40,8 @@ def main() -> None:
     store = ProfileStore(PROFILES_PATH, PROFILES_DIR, config_path=CONFIG_PATH)
     controller = ScanController(store)
     overlay = OverlayController(OVERLAY_CONFIG_PATH, OVERLAY_SLOTS_DIR,
-                                OVERLAY_MISSION_DIR, store.default_profile().id)
+                                OVERLAY_MISSION_DIR, MISSION_DEFAULTS_DIR,
+                                store.default_profile().id)
     manager = ProfileManager(store, controller, overlay)
     manager.start()
 

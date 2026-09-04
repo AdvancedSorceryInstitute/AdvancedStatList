@@ -15,7 +15,7 @@ from version import __version__
 from core.controller import ScanController
 from charprofile.manager import ProfileManager
 from charprofile.tab import ProfileTab
-from overlay.config import DEFAULT_SCALE, OverlayConfig
+from overlay.config import DEFAULT_SCALE, MEASURED_MISSION_KEY, OverlayConfig
 from win.keyboard import DEFAULT_KEY, KEY_CHOICES
 from win.window import get_client_rect
 from .region_picker import RegionPicker
@@ -37,6 +37,13 @@ _HIDE_KEY_VALUES = {label: name for name, label in _HIDE_KEY_LABELS.items()}
 
 _EXIT_PICK_HELP = "画面右上の EXIT ボタンをドラッグで囲んでください   Esc で終了"
 _EXIT_PICK_HINT = "ミッション中の画面で、ボタンの枠にぴったり合わせてください"
+
+# MissionDetector.status() の表示名
+_MISSION_STATUS_TEXT = {
+    "custom": "登録済み",
+    "default": "既定値を使用中",
+    "none": "未登録（判定できないため常時表示）",
+}
 
 
 class SettingsWindow(tk.Toplevel):
@@ -252,10 +259,12 @@ class SettingsWindow(tk.Toplevel):
         key = self._overlay.current_key()
         if key is None:
             text = "マビノギのウィンドウが見つかりません"
-        elif self._overlay.mission.configured(key):
-            text = f"{key} 登録済み"
         else:
-            text = f"{key} 未登録（判定できないため常時表示）"
+            status = self._overlay.mission.status(key)
+            text = f"{key} " + _MISSION_STATUS_TEXT[status]
+            # 実測した解像度以外は当てはめただけなので、合わないことがある
+            if status == "default" and key != MEASURED_MISSION_KEY:
+                text += f"（{MEASURED_MISSION_KEY} からの暫定値）"
         self._mission_state_lbl.config(text=text, fg=MUTED if enabled else "#666666")
 
     def _toggle_mission_only(self) -> None:

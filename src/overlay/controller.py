@@ -32,11 +32,12 @@ _LEGACY_PREVIEW = re.compile(r"^\d+x\d+_")
 
 class OverlayController:
     def __init__(self, config_path: Path, slots_dir: Path, mission_dir: Path,
-                 default_profile_id: str):
+                 mission_defaults_dir: Path, default_profile_id: str):
         self.config = OverlayConfig(config_path, default_profile_id)
         self.slots_dir = slots_dir
         self._migrate_previews(default_profile_id)
-        self.mission = MissionDetector(mission_dir, self.config.mission_detect)
+        self.mission = MissionDetector(mission_dir, mission_defaults_dir,
+                                       self.config.mission_detect)
 
         self._window = OverlayWindow(
             self._tick,
