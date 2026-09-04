@@ -15,6 +15,7 @@ tools/build.py は手元の config/ をそのまま同梱する開発用ビル�
 
 import argparse
 import importlib.util
+import re
 import shutil
 import subprocess
 import sys
@@ -131,6 +132,8 @@ def check_publishable(version: str) -> None:
     """公開してよい状態か、ビルド前に確かめる"""
     if shutil.which("gh") is None:
         fail("gh コマンドが見つかりません。GitHub CLI を入れて gh auth login してください")
+    # 以降の gh の応答はアカウント次第で変わるので、先に切り替えておく
+    switch_to_push_account()
     if is_dirty():
         fail("未コミットの変更があります。コミットしてから公開してください")
 
@@ -151,12 +154,59 @@ def check_publishable(version: str) -> None:
         print("警告: origin/main に push していないコミットがあります")
 
 
-def release_exists(version: str) -> bool:
+def gh(*args: str) -> str | None:
+    """gh を実行して標準出力を返す。失敗したら None"""
     result = subprocess.run(
-        ["gh", "release", "view", version], cwd=ROOT,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        ["gh", *args], cwd=ROOT,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
-    return result.returncode == 0
+    if result.returncode != 0:
+        return None
+    return result.stdout.decode("utf-8", "replace").strip()
+
+
+def release_exists(version: str) -> bool:
+    return gh("release", "view", version) is not None
+
+
+def can_push() -> bool:
+    """今のアカウントがこのリポジトリへ書き込めるか"""
+    permission = gh("repo", "view", "--json", "viewerPermission",
+                    "--jq", ".viewerPermission")
+    return permission in ("WRITE", "MAINTAIN", "ADMIN")
+
+
+def logged_in_accounts() -> list[str]:
+    """gh にログイン済みのアカウント名"""
+    status = gh("auth", "status") or ""
+    return re.findall(r"Logged in to \S+ account (\S+)", status)
+
+
+def switch_to_push_account() -> None:
+    """このリポジトリへ書き込めるアカウントに切り替える。
+
+    gh は複数アカウントをログインしたままにできるが、権限のないアカウントで
+    release create を実行すると「workflow scope may be required」という
+    原因と無関係な失敗をするため、ビルド前にここで解消しておく。
+    """
+    if can_push():
+        return
+
+    current = gh("api", "user", "--jq", ".login")
+    for account in logged_in_accounts():
+        if account == current:
+            continue
+        if gh("auth", "switch", "--user", account) is None:
+            continue
+        if can_push():
+            print(f"gh のアカウントを切り替え: {current} -> {account}")
+            return
+
+    # どれも権限が無かったので、勝手に切り替えたままにせず元へ戻す
+    if current:
+        gh("auth", "switch", "--user", current)
+    fail(f"gh のアカウント {current} にはこのリポジトリへの書き込み権限がありません。"
+         "権限のあるアカウントで gh auth login してください")
 
 
 def push_tag(version: str) -> None:
