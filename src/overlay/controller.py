@@ -24,16 +24,19 @@ from .capture import SlotCapture, bounding_rect
 from .config import OverlayConfig, Profile, Slot
 from .layout import FRAME, GridMetrics, compose, compose_adjust
 from .layered_window import OverlayWindow
+from .mission import MissionDetector
 
 # キャラクター別になる前のプレビュー画像名（例 2560x1440_slot_02.png）
 _LEGACY_PREVIEW = re.compile(r"^\d+x\d+_")
 
 
 class OverlayController:
-    def __init__(self, config_path: Path, slots_dir: Path, default_profile_id: str):
+    def __init__(self, config_path: Path, slots_dir: Path, mission_dir: Path,
+                 default_profile_id: str):
         self.config = OverlayConfig(config_path, default_profile_id)
         self.slots_dir = slots_dir
         self._migrate_previews(default_profile_id)
+        self.mission = MissionDetector(mission_dir, self.config.mission_detect)
 
         self._window = OverlayWindow(
             self._tick,
@@ -222,15 +225,25 @@ class OverlayController:
             self._hide(f"{key_label(cfg.hide_key)} キーで一時非表示")
             return
 
+        # ミッション外なら隠す。EXIT ボタンが未登録なら判定できないので、
+        # 黙って消えるより出しっぱなしのほうが害が小さいと考えて表示を続ける
+        mission_note = ""
+        if cfg.mission_only:
+            if not self.mission.configured(key):
+                mission_note = f"{key}: EXIT ボタンが未登録のため常時表示"
+            elif not self.mission.in_mission(key, client, self._capture):
+                self._hide("ミッション外のため非表示")
+                return
+
         images = self._capture.grab_slots(client, slots)
         items = [(s.col, s.row, im) for s, im in zip(slots, images)]
         img, metrics = compose(items, prof.scale, cfg.gap, cfg.background)
         self._metrics = metrics
 
         x, y = self._draw_position(client, prof, metrics.pad)
-        self.overlap_warning = self._overlaps_capture(client, slots, x, y, img.size)
+        self.overlap_warning = self._overlaps_capture(client, key, slots, x, y, img.size)
         self.state = "visible"
-        self.detail = "キャプチャ範囲と重なっています" if self.overlap_warning else ""
+        self.detail = "キャプチャ範囲と重なっています" if self.overlap_warning else mission_note
 
         self._window.set_click_through(True)
 
@@ -404,16 +417,23 @@ class OverlayController:
             y -= client["top"]
         self.config.set_position(key, x, y)
 
-    def _overlaps_capture(self, client: dict, slots: list[Slot],
+    def _overlaps_capture(self, client: dict, key: str, slots: list[Slot],
                           x: int, y: int, size: tuple[int, int]) -> bool:
         """オーバーレイがキャプチャ対象と重なっていないか判定する。
 
-        重なったまま表示すると自分自身を映して入れ子になる。
+        スロットに重なると自分自身を映して入れ子になり、
+        EXIT ボタンに重なるとミッション判定がオーバーレイを見てしまう。
         """
-        bounds = bounding_rect(slots)
-        if bounds is None:
-            return False
-        bx, by, bw, bh = bounds
-        cx, cy = client["left"] + bx, client["top"] + by
-        return not (x + size[0] <= cx or cx + bw <= x
-                    or y + size[1] <= cy or cy + bh <= y)
+        targets = [bounding_rect(slots)]
+        if self.config.mission_only:
+            targets.append(self.config.mission_detect.region(key))
+
+        for rect in targets:
+            if rect is None:
+                continue
+            bx, by, bw, bh = rect
+            cx, cy = client["left"] + bx, client["top"] + by
+            if not (x + size[0] <= cx or cx + bw <= x
+                    or y + size[1] <= cy or cy + bh <= y):
+                return True
+        return False

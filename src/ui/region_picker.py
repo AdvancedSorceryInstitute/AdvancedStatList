@@ -1,8 +1,11 @@
-"""識別範囲をドラッグで指定するピッカー。
+"""任意サイズの矩形をドラッグで指定するピッカー。
 
 スキルスロットのピッカー（overlay/picker.py）と同じく、ゲームのクライアント領域を
 1枚キャプチャし、その静止画の上で選ばせる。こちらは固定サイズではなく、
-クイックスロットの並び全体を囲めるよう任意サイズの矩形をドラッグで取る。
+囲みたい対象に合わせた任意サイズの矩形をドラッグで取る。
+
+キャラクター判別の識別範囲と、ミッション判定の EXIT ボタン範囲の双方で使うため、
+案内文言は呼び出し側から渡す。
 """
 
 import tkinter as tk
@@ -15,8 +18,8 @@ from PIL import Image, ImageTk
 from win.window import find_hwnd
 from win.window_capture import capture_client
 
-HELP_TEXT = "キャラクター判別に使う範囲をドラッグで囲んでください   Esc で終了"
-HINT_TEXT = "スキルスロット(F1~F12)推奨"
+DEFAULT_HELP_TEXT = "キャラクター判別に使う範囲をドラッグで囲んでください   Esc で終了"
+DEFAULT_HINT_TEXT = "スキルスロット(F1~F12)推奨"
 
 # これより小さい範囲は判別に使えないので確定させない
 MIN_SIZE = 16
@@ -36,10 +39,14 @@ class RegionPicker:
     def __init__(self, master: tk.Misc, client: dict,
                  on_pick: Callable[[int, int, int, int, Image.Image], None],
                  on_close: Optional[Callable[[], None]] = None,
-                 current: Optional[tuple[int, int, int, int]] = None):
+                 current: Optional[tuple[int, int, int, int]] = None,
+                 help_text: str = DEFAULT_HELP_TEXT,
+                 hint_text: str = DEFAULT_HINT_TEXT):
         self._client = client
         self._on_pick = on_pick
         self._on_close = on_close
+        self._help_text = help_text
+        self._hint_text = hint_text
         self._start: Optional[tuple[int, int]] = None
         self._rect = (0, 0, 0, 0)
         self._closed = False
@@ -92,9 +99,10 @@ class RegionPicker:
 
         self._canvas.create_rectangle(cw // 2 - 300, 16, cw // 2 + 300, 76,
                                       fill=_HELP_BG, outline="", stipple="gray50")
-        self._canvas.create_text(cw // 2, 36, text=HELP_TEXT, fill=_HELP_FG,
+        self._canvas.create_text(cw // 2, 36, text=self._help_text, fill=_HELP_FG,
                                  font=("", 12, "bold"))
-        self._canvas.create_text(cw // 2, 60, text=HINT_TEXT, fill="#bbbbbb", font=("", 9))
+        self._canvas.create_text(cw // 2, 60, text=self._hint_text, fill="#bbbbbb",
+                                 font=("", 9))
 
         # 設定済みの範囲を薄く見せておくと、選び直しの目安になる
         if current is not None and current[2] > 0 and current[3] > 0:

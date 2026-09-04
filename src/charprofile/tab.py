@@ -10,12 +10,12 @@ from typing import Optional
 
 from PIL import Image, ImageTk
 
+from ui.region_picker import RegionPicker
 from ui.theme import BG, BG_BTN, BG_ROW, FG, MUTED, flat_btn_style
 from win.window import get_client_rect
 
 from .identify import client_key, save_fingerprint
 from .manager import ProfileManager
-from .region_picker import RegionPicker
 from .store import CharacterProfile
 
 # 一覧に出す指紋プレビューの寸法。

@@ -13,6 +13,7 @@ from win import single_instance
 
 OVERLAY_CONFIG_PATH = CONFIG_DIR / "overlay.yaml"
 OVERLAY_SLOTS_DIR = CONFIG_DIR / "overlay" / "slots"
+OVERLAY_MISSION_DIR = CONFIG_DIR / "overlay" / "mission"
 PROFILES_PATH = CONFIG_DIR / "profiles.yaml"
 PROFILES_DIR = CONFIG_DIR / "profiles"
 
@@ -37,7 +38,7 @@ def main() -> None:
     store = ProfileStore(PROFILES_PATH, PROFILES_DIR, config_path=CONFIG_PATH)
     controller = ScanController(store)
     overlay = OverlayController(OVERLAY_CONFIG_PATH, OVERLAY_SLOTS_DIR,
-                                store.default_profile().id)
+                                OVERLAY_MISSION_DIR, store.default_profile().id)
     manager = ProfileManager(store, controller, overlay)
     manager.start()
 

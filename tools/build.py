@@ -19,7 +19,7 @@ dist = root / 'dist' / 'AdvancedStatList'
 
 # 設定は手元の config/ をそのまま複製する。
 # config.yaml の解像度依存の座標も、profiles.yaml / overlay.yaml と
-# それらが参照する profiles/・overlay/slots/ の画像も含めるので、
+# それらが参照する profiles/・overlay/ 配下の画像も含めるので、
 # ソースから動かしていたときと同じ状態で exe が起動する。
 # 個人の設定が入るため、この成果物をそのまま配布しないこと
 config_src = root / 'config'

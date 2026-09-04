@@ -34,6 +34,12 @@ DEFAULT_SCALE = 2.0
 # 旧形式（profiles 直下が解像度キー）の判定に使う
 _RESOLUTION_KEY = re.compile(r"^\d+x\d+$")
 
+# ミッション判定の既定値。GUI には出さず、必要なら overlay.yaml で調整する
+DEFAULT_MISSION_THRESHOLD = 0.8    # EXIT ボタンとみなす相関
+DEFAULT_MISSION_INTERVAL = 0.5     # 判定の間隔（秒）
+DEFAULT_MISSION_GRACE = 1.5        # 見失ってからミッション外と決めるまでの猶予（秒）
+DEFAULT_MISSION_CURSOR_MARGIN = 24  # この範囲にカーソルがあれば判定を保留（px）
+
 
 def _clamp_percent(value) -> int:
     """不透明度など 0-100% で持つ値を範囲内に収める。"""
@@ -141,6 +147,22 @@ class Profile:
             row += 1
 
 
+@dataclass
+class MissionDetect:
+    """ミッション判定のパラメータ。
+
+    EXIT ボタンの位置はキャラクターによらず同じなので、解像度ごとに1つだけ持つ。
+    """
+    threshold: float = DEFAULT_MISSION_THRESHOLD
+    interval: float = DEFAULT_MISSION_INTERVAL
+    grace: float = DEFAULT_MISSION_GRACE
+    cursor_margin: int = DEFAULT_MISSION_CURSOR_MARGIN
+    regions: dict[str, tuple[int, int, int, int]] = field(default_factory=dict)
+
+    def region(self, key: str) -> Optional[tuple[int, int, int, int]]:
+        return self.regions.get(key)
+
+
 class OverlayConfig:
     """overlay.yaml の内容を保持する。
 
@@ -162,6 +184,8 @@ class OverlayConfig:
         self.hover_opacity: int = 30     # 薄くしたときの不透明度（%）
         self.hide_key_enabled: bool = True   # キーを押している間だけ隠す
         self.hide_key: str = DEFAULT_KEY     # 隠すのに使うキー
+        self.mission_only: bool = False      # ミッション中だけ表示する
+        self.mission_detect = MissionDetect()
         # キャラクタープロファイル ID -> 解像度キー -> 設定
         self.profiles: dict[str, dict[str, Profile]] = {}
         self._current_pid = default_profile_id
@@ -190,6 +214,8 @@ class OverlayConfig:
             self.hide_key_enabled = bool(data.get("hide_key_enabled",
                                                   self.hide_key_enabled))
             self.hide_key = normalize_key(data.get("hide_key", self.hide_key))
+            self.mission_only = bool(data.get("mission_only", self.mission_only))
+            self.mission_detect = self._parse_mission(data.get("mission_detect") or {})
 
             raw = data.get("profiles") or {}
             if self._is_legacy(raw):
@@ -203,6 +229,22 @@ class OverlayConfig:
                     str(key): self._parse_profile(prof or {})
                     for key, prof in (per_resolution or {}).items()
                 }
+
+    @staticmethod
+    def _parse_mission(data: dict) -> MissionDetect:
+        regions = {}
+        for key, r in (data.get("regions") or {}).items():
+            r = r or {}
+            regions[str(key)] = (int(r.get("x", 0)), int(r.get("y", 0)),
+                                 int(r.get("w", 0)), int(r.get("h", 0)))
+        return MissionDetect(
+            threshold=float(data.get("threshold", DEFAULT_MISSION_THRESHOLD)),
+            interval=max(0.0, float(data.get("interval", DEFAULT_MISSION_INTERVAL))),
+            grace=max(0.0, float(data.get("grace", DEFAULT_MISSION_GRACE))),
+            cursor_margin=max(0, int(data.get("cursor_margin",
+                                              DEFAULT_MISSION_CURSOR_MARGIN))),
+            regions=regions,
+        )
 
     @staticmethod
     def _is_legacy(raw: dict) -> bool:
@@ -263,6 +305,17 @@ class OverlayConfig:
                 "hover_opacity": self.hover_opacity,
                 "hide_key_enabled": self.hide_key_enabled,
                 "hide_key": self.hide_key,
+                "mission_only": self.mission_only,
+                "mission_detect": {
+                    "threshold": self.mission_detect.threshold,
+                    "interval": self.mission_detect.interval,
+                    "grace": self.mission_detect.grace,
+                    "cursor_margin": self.mission_detect.cursor_margin,
+                    "regions": {
+                        key: {"x": r[0], "y": r[1], "w": r[2], "h": r[3]}
+                        for key, r in self.mission_detect.regions.items()
+                    },
+                },
                 "profiles": {
                     pid: {
                         key: {
@@ -424,6 +477,19 @@ class OverlayConfig:
                 return False
         self.save()
         return True
+
+    # ------------------------------------------------------------ ミッション判定
+
+    def set_mission_region(self, key: str, rect: tuple[int, int, int, int]) -> None:
+        """EXIT ボタンの範囲を設定する。
+
+        サイズが変わると既存のテンプレートとは比較できなくなるため、
+        呼び出し側で必ず取り直すこと。
+        """
+        with self._lock:
+            self.mission_detect.regions[key] = (int(rect[0]), int(rect[1]),
+                                                int(rect[2]), int(rect[3]))
+        self.save()
 
     def set_position(self, key: str, x: int, y: int) -> None:
         with self._lock:

@@ -8,13 +8,17 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Callable
 
+from PIL import Image
+
 from .add_buff import AddBuffApp
 from version import __version__
 from core.controller import ScanController
 from charprofile.manager import ProfileManager
 from charprofile.tab import ProfileTab
-from overlay.config import DEFAULT_SCALE
+from overlay.config import DEFAULT_SCALE, OverlayConfig
 from win.keyboard import DEFAULT_KEY, KEY_CHOICES
+from win.window import get_client_rect
+from .region_picker import RegionPicker
 from .scroll_frame import ScrollFrame
 from .spin import bind_spin
 from .theme import ACCENT, BG, FG, LINK, MUTED, flat_btn_style, toggle_btn_style
@@ -30,6 +34,9 @@ _ANCHOR_VALUES = {label: value for value, label in _ANCHOR_LABELS.items()}
 # 一時非表示に使うキーの選択肢。設定ファイルにはキー名（shift など）で保存する
 _HIDE_KEY_LABELS = {name: label for name, (label, _vk) in KEY_CHOICES.items()}
 _HIDE_KEY_VALUES = {label: name for name, label in _HIDE_KEY_LABELS.items()}
+
+_EXIT_PICK_HELP = "画面右上の EXIT ボタンをドラッグで囲んでください   Esc で終了"
+_EXIT_PICK_HINT = "ミッション中の画面で、ボタンの枠にぴったり合わせてください"
 
 
 class SettingsWindow(tk.Toplevel):
@@ -81,6 +88,7 @@ class SettingsWindow(tk.Toplevel):
         key = self._overlay.current_key()
         if key is not None:
             self.v_scale.set(str(self._overlay.config.scale_of(key)))
+        self._sync_mission_row()
 
     def _buff_added(self) -> None:
         self._on_buff_added()
@@ -211,9 +219,77 @@ class SettingsWindow(tk.Toplevel):
         self._hide_key_combo.config(
             state="readonly" if cfg.hide_key_enabled else "disabled")
 
+        # ミッション中かどうかは、画面右上の EXIT ボタンの有無で判定する
+        self.v_mission_only, self._mission_toggle_btn = self._toggle(
+            box, "ミッション中のみ表示", 10, cfg.mission_only, self._toggle_mission_only)
+        self._build_mission_region_row(box, 11)
+
         tk.Label(box, text="拡大率はキャラクターと解像度ごとの設定です。",
                  bg=BG, fg="#777777", font=("", 8), anchor="w"
-                 ).grid(row=10, column=0, columnspan=2, sticky="w", pady=(10, 0))
+                 ).grid(row=12, column=0, columnspan=2, sticky="w", pady=(10, 0))
+
+    def _build_mission_region_row(self, box: tk.Frame, row: int) -> None:
+        tk.Label(box, text="EXIT ボタン範囲", bg=BG, fg=FG
+                 ).grid(row=row, column=0, sticky="w", pady=6)
+        cell = tk.Frame(box, bg=BG)
+        cell.grid(row=row, column=1, sticky="w", padx=(12, 0))
+
+        self._mission_pick_btn = tk.Button(
+            cell, text="範囲を指定", command=self._pick_mission_region,
+            padx=10, pady=2, **flat_btn_style(),
+        )
+        self._mission_pick_btn.pack(side="left")
+        self._mission_state_lbl = tk.Label(cell, text="", bg=BG, fg=MUTED, font=("", 8))
+        self._mission_state_lbl.pack(side="left", padx=(8, 0))
+
+        self._sync_mission_row()
+
+    def _sync_mission_row(self) -> None:
+        """EXIT ボタンの登録状態と、指定ボタンの有効・無効を合わせる。"""
+        enabled = self.v_mission_only.get()
+        self._mission_pick_btn.config(state="normal" if enabled else "disabled")
+
+        key = self._overlay.current_key()
+        if key is None:
+            text = "マビノギのウィンドウが見つかりません"
+        elif self._overlay.mission.configured(key):
+            text = f"{key} 登録済み"
+        else:
+            text = f"{key} 未登録（判定できないため常時表示）"
+        self._mission_state_lbl.config(text=text, fg=MUTED if enabled else "#666666")
+
+    def _toggle_mission_only(self) -> None:
+        # 使わないなら、EXIT ボタンを登録できても意味がないので触らせない
+        self._flip(self.v_mission_only, self._mission_toggle_btn)
+        self._sync_mission_row()
+
+    def _pick_mission_region(self) -> None:
+        client = get_client_rect()
+        if client is None:
+            messagebox.showwarning("スキルオーバーレイ",
+                                   "マビノギのウィンドウが見つかりません。\n"
+                                   "ゲームを起動した状態で実行してください。",
+                                   parent=self)
+            return
+        key = OverlayConfig.profile_key(client)
+
+        def on_pick(x: int, y: int, w: int, h: int, shot: Image.Image) -> None:
+            # 範囲とテンプレートは必ず対で更新する。
+            # 片方だけ変えるとサイズが合わず判定できなくなる
+            self._overlay.config.set_mission_region(key, (x, y, w, h))
+            if not self._overlay.mission.save_template(key, shot, (x, y, w, h)):
+                messagebox.showerror("スキルオーバーレイ",
+                                     "EXIT ボタンの画像を保存できませんでした。",
+                                     parent=self)
+
+        def on_close() -> None:
+            self._overlay.resume()
+            self._sync_mission_row()
+
+        self._overlay.suspend()   # オーバーレイが範囲に重なって写り込むのを避ける
+        RegionPicker(self, client, on_pick, on_close=on_close,
+                     current=self._overlay.config.mission_detect.region(key),
+                     help_text=_EXIT_PICK_HELP, hint_text=_EXIT_PICK_HINT)
 
     def _toggle_tuan_support(self) -> None:
         self._flip(self.v_tuan, self._tuan_toggle_btn)
@@ -260,6 +336,7 @@ class SettingsWindow(tk.Toplevel):
             hover_opacity=self.v_hover_opacity.get(),
             hide_key_enabled=self.v_hide_key_enabled.get(),
             hide_key=_HIDE_KEY_VALUES.get(self.v_hide_key.get(), DEFAULT_KEY),
+            mission_only=self.v_mission_only.get(),
         )
         if not saved:
             # 拡大率はキャラクターと解像度ごとの設定なので、保存先を決められない
