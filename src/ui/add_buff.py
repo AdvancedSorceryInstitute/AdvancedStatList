@@ -8,24 +8,17 @@ import shutil
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+from typing import Callable
 
 from PIL import Image, ImageTk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
+from core.buff_files import install_banner, install_sound, write_config
 from core.controller import BUFFS_DIR
-from notify.audio_convert import wav_to_mp3
 from .spin import bind_spin
 
 # システム予約バフID（上書きすると専用の config が壊れるため追加禁止）
 RESERVED_BUFF_IDS = {"SongOfTuan"}
-
-CONFIG_TEMPLATE = """\
-name: {name}
-display_name: {display_name}
-type: {type}
-enabled: true              # false にするとスキャン・通知をスキップ
-warning_threshold: {warning_threshold}      # 何秒前に通知するか
-"""
 
 
 def _parse_drop_path(data: str) -> Path:
@@ -46,10 +39,12 @@ class DropZone(tk.Frame):
     BG = "#252525"
 
     def __init__(self, master, label: str, accept: str,
-                 preview_size: tuple[int, int] | None = None, **kw):
+                 preview_size: tuple[int, int] | None = None,
+                 on_change: Callable[[], None] | None = None, **kw):
         super().__init__(master, relief="groove", bd=2, bg=self.BG, **kw)
         self.accept = accept          # "image" or "audio"
         self.preview_size = preview_size
+        self._on_change = on_change
         self.path: Path | None = None
         self._photo = None
 
@@ -71,7 +66,7 @@ class DropZone(tk.Frame):
             w.bind("<Button-1>", self._on_click)
 
     def _on_drop(self, event) -> None:
-        self._set(_parse_drop_path(event.data))
+        self.set_path(_parse_drop_path(event.data))
 
     def _on_click(self, _=None) -> None:
         if self.accept == "image":
@@ -80,9 +75,9 @@ class DropZone(tk.Frame):
             ft = [("音声ファイル", "*.mp3 *.wav *.ogg"), ("すべて", "*.*")]
         p = filedialog.askopenfilename(filetypes=ft)
         if p:
-            self._set(Path(p))
+            self.set_path(Path(p))
 
-    def _set(self, path: Path) -> None:
+    def set_path(self, path: Path) -> None:
         if not path.exists():
             messagebox.showerror("エラー", f"ファイルが見つかりません:\n{path}")
             return
@@ -91,6 +86,8 @@ class DropZone(tk.Frame):
         self._lbl.config(fg=self.LABEL_SET)
         if self.preview_size and self.accept == "image":
             self._refresh_preview(path)
+        if self._on_change:
+            self._on_change()
 
     def _refresh_preview(self, path: Path) -> None:
         pw, ph = self.preview_size
@@ -110,6 +107,8 @@ class DropZone(tk.Frame):
         if self.preview_size and self._photo:
             self._prev.config(image="")
             self._photo = None
+        if self._on_change:
+            self._on_change()
 
 
 class AddBuffApp:
@@ -226,22 +225,9 @@ class AddBuffApp:
             messagebox.showerror("入力エラー", "\n".join(errors))
             return
 
-        # WAV は MP3 に変換して登録する。失敗しても中途半端なファイルを残さないよう
-        # ディレクトリを作る前に変換しておく
-        mp3_data: bytes | None = None
-        sound_src = self.dz_sound.path
-        if sound_src and sound_src.suffix.lower() == ".wav":
-            try:
-                mp3_data = wav_to_mp3(sound_src)
-            except Exception as e:
-                messagebox.showerror("変換エラー",
-                                     f"WAV を MP3 に変換できませんでした:\n{e}")
-                return
-
         name = self.v_name.get().strip()
         buff_dir = BUFFS_DIR / name
-        config_dest = buff_dir / "config.yaml"
-        if config_dest.exists():
+        if (buff_dir / "config.yaml").exists():
             if not messagebox.askyesno("上書き確認",
                                        f"buffs/{name}/ が既に存在します。上書きしますか？"):
                 return
@@ -254,24 +240,21 @@ class AddBuffApp:
         cp(self.dz_active.path, "icon_active")
         if self.dz_inactive.path:
             cp(self.dz_inactive.path, "icon_inactive")
-        cp(self.dz_banner.path, "banner")
-        if sound_src:
-            # 拡張子が変わっても古い音が残らないよう、既存の sound.* を消してから置く
-            for old in buff_dir.glob("sound.*"):
-                old.unlink()
-            if mp3_data is not None:
-                (buff_dir / "sound.mp3").write_bytes(mp3_data)
-            else:
-                cp(sound_src, "sound")
+        install_banner(buff_dir, self.dz_banner.path)
+        if self.dz_sound.path:
+            try:
+                install_sound(buff_dir, self.dz_sound.path)
+            except Exception as e:
+                # config を書かずに戻れば、中途半端なフォルダはバフとして読み込まれない
+                messagebox.showerror("変換エラー",
+                                     f"WAV を MP3 に変換できませんでした:\n{e}")
+                return
 
-        config_dest.write_text(
-            CONFIG_TEMPLATE.format(
-                name=name,
-                display_name=self.v_display.get().strip(),
-                type=self.v_type.get(),
-                warning_threshold=int(self.v_threshold.get().strip()),
-            ),
-            encoding="utf-8",
+        write_config(
+            buff_dir, name,
+            display_name=self.v_display.get().strip(),
+            type_=self.v_type.get(),
+            warning_threshold=int(self.v_threshold.get().strip()),
         )
 
         messagebox.showinfo("完了", f"buffs/{name}/ を生成しました。")

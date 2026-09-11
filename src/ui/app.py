@@ -15,6 +15,7 @@ from overlay.tab import OverlayTab
 from charprofile.bar import ProfileBar
 from charprofile.manager import ProfileManager
 from charprofile.store import CharacterProfile
+from .buff_edit import BuffEditWindow
 from .settings_window import SettingsWindow
 from . import theme as ui_theme
 
@@ -58,6 +59,7 @@ class App:
         self._buff_rows: dict[str, dict] = {}
         self._icons: dict[str, object] = {}  # ImageTk.PhotoImage の参照保持用
         self._settings_window: Optional[SettingsWindow] = None
+        self._buff_edit_window: Optional[BuffEditWindow] = None
         self._buff_menu: Optional[tk.Menu] = None
 
         self._apply_style()
@@ -148,7 +150,7 @@ class App:
         self._buff_rows_frame = tk.Frame(parent, bg=self.BG)
         self._buff_rows_frame.pack(fill="both", expand=True, padx=12, pady=(2, 4))
 
-        tk.Label(parent, text="バフを右クリックすると削除できます。",
+        tk.Label(parent, text="バフを右クリックすると設定変更・削除ができます。",
                  bg=self.BG, fg="#777777", anchor="w", font=("", 8)
                  ).pack(fill="x", padx=12, pady=(0, 10))
 
@@ -254,12 +256,31 @@ class App:
         menu = tk.Menu(self.root, tearoff=0, bg="#2a2a2a", fg=self.FG,
                        activebackground=self.ACCENT, activeforeground="white",
                        bd=0, relief="flat")
+        menu.add_command(label="設定...", command=lambda: self._open_buff_edit(name))
         menu.add_command(label="削除", command=lambda: self._delete_buff(name))
         self._buff_menu = menu
         try:
             menu.tk_popup(event.x_root, event.y_root)
         finally:
             menu.grab_release()
+
+    def _open_buff_edit(self, name: str) -> None:
+        win = self._buff_edit_window
+        if win is not None and win.winfo_exists():
+            if win.buff_name == name:
+                win.lift()
+                win.focus_force()
+                return
+            win.destroy()
+        cfg = self.controller.buff_configs.get(name, {})
+        self._buff_edit_window = BuffEditWindow(self.root, name, cfg,
+                                                on_saved=self._on_buff_added,
+                                                notifier=self.controller.notifier)
+
+    def _close_buff_edit(self, name: str) -> None:
+        win = self._buff_edit_window
+        if win is not None and win.winfo_exists() and win.buff_name == name:
+            win.destroy()
 
     def _delete_buff(self, name: str) -> None:
         display_name = self.controller.buff_configs.get(name, {}).get("display_name", name)
@@ -275,6 +296,7 @@ class App:
                                  f"buffs/{name}/ をごみ箱へ移動できませんでした。",
                                  parent=self.root)
             return
+        self._close_buff_edit(name)
         self._refresh_buff_rows()
 
     def _move_buff(self, name: str, direction: int) -> None:

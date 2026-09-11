@@ -43,10 +43,11 @@ class TimerManager:
                     tuan_threshold=tuan_threshold,
                 )
             else:
+                # 毎回上書きすることで設定変更を次スキャンで反映する
+                timer.warning_threshold = warning_threshold
                 # バフが更新されて残り時間が閾値を超えた場合、通知フラグをリセット
-                if timer.warning_threshold is not None and remaining > timer.warning_threshold:
+                if warning_threshold is not None and remaining > warning_threshold:
                     timer.warned = False
-                # 毎回上書きすることで設定ON/OFFの切替を次スキャンで反映する
                 timer.tuan_threshold = tuan_threshold
                 if tuan_threshold is None or remaining > tuan_threshold:
                     timer.tuan_warned = False

@@ -18,6 +18,8 @@ _banner_class_serial = itertools.count()
 
 class Notifier:
     POPUP_DURATION = 5000  # ms
+    # 通知用の notifier_mp3 と別名にし、通知と試聴が重なっても互いを閉じない
+    _PREVIEW_ALIAS = "notifier_preview"
 
     def __init__(self, buffs_dir: Optional[Path] = None, volume: int = 100, banner_y_offset: int = 80):
         self._buffs_dir = buffs_dir
@@ -74,6 +76,18 @@ class Notifier:
         winmm.mciSendStringW(f"setaudio {alias} volume to {self._volume * 10}", None, 0, None)
         winmm.mciSendStringW(f"play {alias} wait", None, 0, None)
         winmm.mciSendStringW(f"close {alias}", None, 0, None)
+
+    def preview(self, path: Path) -> None:
+        # 前の試聴を止めてから開く。wait を付けないので UI スレッドを塞がない
+        winmm = ctypes.windll.winmm
+        alias = self._PREVIEW_ALIAS
+        winmm.mciSendStringW(f"close {alias}", None, 0, None)
+        winmm.mciSendStringW(f'open "{path}" type mpegvideo alias {alias}', None, 0, None)
+        winmm.mciSendStringW(f"setaudio {alias} volume to {self._volume * 10}", None, 0, None)
+        winmm.mciSendStringW(f"play {alias}", None, 0, None)
+
+    def stop_preview(self) -> None:
+        ctypes.windll.winmm.mciSendStringW(f"close {self._PREVIEW_ALIAS}", None, 0, None)
 
     def _banner_thread(self, banner_path: Path) -> None:
         """Pure Win32 API でバナーウィンドウを作成・表示する。tkinter と完全に独立。"""
