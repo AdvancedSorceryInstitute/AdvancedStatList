@@ -98,6 +98,17 @@ class BuffEditWindow(tk.Toplevel):
                                   preview_size=(360, 56), height=100)
         self.dz_banner.pack(fill="x", padx=14, pady=4)
 
+        # 10秒前バナーは音楽バフでしか使わないので、種別が music_buff のときだけ見せる。
+        # 区切り線ごと 1 つの Frame にまとめて pack / pack_forget を切り替える
+        self._tuan_frame = tk.Frame(self, bg=BG)
+        tk.Frame(self._tuan_frame, bg="#333333", height=1).pack(fill="x", padx=14, pady=4)
+        self.dz_tuan_banner = DropZone(self._tuan_frame, "10秒前バナー画像 (音楽バフ用)",
+                                       "image", preview_size=(360, 56), height=100)
+        self.dz_tuan_banner.pack(fill="x", padx=14, pady=4)
+        self.v_type.trace_add("write", lambda *_: self._update_tuan_visibility())
+        # 初期表示は config.yaml の type に従う
+        self._update_tuan_visibility()
+
         self._sep()
 
         sound_row = tk.Frame(self, bg=BG)
@@ -118,6 +129,14 @@ class BuffEditWindow(tk.Toplevel):
 
         self._sep()
 
+    def _update_tuan_visibility(self) -> None:
+        if self.v_type.get() == "music_buff":
+            self._tuan_frame.pack(after=self.dz_banner, fill="x")
+        else:
+            # normal に戻したあと、見えない欄の値が保存されないように空にする
+            self.dz_tuan_banner.reset()
+            self._tuan_frame.pack_forget()
+
     def _build_buttons(self) -> None:
         btns = tk.Frame(self, bg=BG)
         btns.pack(pady=(4, 18))
@@ -133,6 +152,12 @@ class BuffEditWindow(tk.Toplevel):
         if banner.exists():
             self._banner_orig = banner
             self.dz_banner.set_path(banner)
+
+        self._tuan_banner_orig: Optional[Path] = None
+        tuan_banner = self._buff_dir / "banner_tuan.png"
+        if tuan_banner.exists():
+            self._tuan_banner_orig = tuan_banner
+            self.dz_tuan_banner.set_path(tuan_banner)
 
         self._sound_orig: Optional[Path] = None
         for sound in self._buff_dir.glob("sound.*"):
@@ -190,6 +215,10 @@ class BuffEditWindow(tk.Toplevel):
         banner_src = self.dz_banner.path
         if banner_src is not None and not _same_file(banner_src, self._banner_orig):
             install_banner(self._buff_dir, banner_src)
+
+        tuan_src = self.dz_tuan_banner.path
+        if tuan_src is not None and not _same_file(tuan_src, self._tuan_banner_orig):
+            install_banner(self._buff_dir, tuan_src, "banner_tuan.png")
 
         write_config(
             self._buff_dir, self.buff_name,

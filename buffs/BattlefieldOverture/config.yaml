@@ -1,5 +1,5 @@
-display_name: 戦場の序曲
-enabled: true
 name: BattlefieldOverture
+display_name: 戦場の序曲
 type: music_buff
-warning_threshold: 30
+enabled: true              # false にするとスキャン・通知をスキップ
+warning_threshold: 29      # 何秒前に通知するか

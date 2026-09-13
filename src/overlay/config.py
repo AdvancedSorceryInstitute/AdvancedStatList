@@ -19,7 +19,7 @@ from typing import Optional
 
 import yaml
 
-from win.keyboard import DEFAULT_KEY, normalize_key
+from win.keyboard import DEFAULT_KEY, NONE_KEY, normalize_key
 
 # クイックスロットのアイコン実測サイズ（クライアント 2560x1440 時）。
 # 28 だとアイコンのフチが切れるため 29 にしている
@@ -213,8 +213,7 @@ class OverlayConfig:
         self.opacity: int = 100          # 表示の不透明度（%）
         self.hover_fade: bool = False    # カーソルが重なったら薄くする
         self.hover_opacity: int = 30     # 薄くしたときの不透明度（%）
-        self.hide_key_enabled: bool = True   # キーを押している間だけ隠す
-        self.hide_key: str = DEFAULT_KEY     # 隠すのに使うキー
+        self.hide_key: str = DEFAULT_KEY     # 押している間だけ隠すキー（NONE_KEY で無効）
         self.mission_only: bool = False      # ミッション中だけ表示する
         self.mission_detect = MissionDetect()
         # キャラクタープロファイル ID -> 解像度キー -> 設定
@@ -242,9 +241,10 @@ class OverlayConfig:
             self.hover_fade = bool(data.get("hover_fade", self.hover_fade))
             self.hover_opacity = _clamp_percent(data.get("hover_opacity",
                                                          self.hover_opacity))
-            self.hide_key_enabled = bool(data.get("hide_key_enabled",
-                                                  self.hide_key_enabled))
             self.hide_key = normalize_key(data.get("hide_key", self.hide_key))
+            # 旧形式（ON/OFF を別項目で持っていた）は OFF を「なし」に読み替える
+            if "hide_key_enabled" in data and not data["hide_key_enabled"]:
+                self.hide_key = NONE_KEY
             self.mission_only = bool(data.get("mission_only", self.mission_only))
             self.mission_detect = self._parse_mission(data.get("mission_detect") or {})
 
@@ -334,7 +334,6 @@ class OverlayConfig:
                 "opacity": self.opacity,
                 "hover_fade": self.hover_fade,
                 "hover_opacity": self.hover_opacity,
-                "hide_key_enabled": self.hide_key_enabled,
                 "hide_key": self.hide_key,
                 "mission_only": self.mission_only,
                 "mission_detect": {

@@ -16,12 +16,12 @@ from core.controller import ScanController
 from charprofile.manager import ProfileManager
 from charprofile.tab import ProfileTab
 from overlay.config import DEFAULT_SCALE, MEASURED_MISSION_KEY, OverlayConfig
-from win.keyboard import DEFAULT_KEY, KEY_CHOICES
+from win.keyboard import DEFAULT_KEY, KEY_CHOICES, NONE_KEY
 from win.window import get_client_rect
 from .region_picker import RegionPicker
 from .scroll_frame import ScrollFrame
 from .spin import bind_spin
-from .theme import ACCENT, BG, FG, LINK, MUTED, flat_btn_style, toggle_btn_style
+from .theme import ACCENT, BG, DISABLED_FG, FG, LINK, MUTED, flat_btn_style, toggle_btn_style
 
 # 背景の選択肢。設定ファイルには従来どおり none / dark で保存する
 _BACKGROUND_LABELS = {"none": "なし", "dark": "ダーク"}
@@ -32,7 +32,8 @@ _ANCHOR_LABELS = {"game": "ゲームに追従", "screen": "画面に固定"}
 _ANCHOR_VALUES = {label: value for value, label in _ANCHOR_LABELS.items()}
 
 # 一時非表示に使うキーの選択肢。設定ファイルにはキー名（shift など）で保存する
-_HIDE_KEY_LABELS = {name: label for name, (label, _vk) in KEY_CHOICES.items()}
+_HIDE_KEY_LABELS = {NONE_KEY: "なし",
+                    **{name: label for name, (label, _vk) in KEY_CHOICES.items()}}
 _HIDE_KEY_VALUES = {label: name for name, label in _HIDE_KEY_LABELS.items()}
 
 _EXIT_PICK_HELP = "画面右上の EXIT ボタンをドラッグで囲んでください   Esc で終了"
@@ -139,9 +140,9 @@ class SettingsWindow(tk.Toplevel):
 
     def _scale(self, box: tk.Frame, label: str, row: int, value: int,
                from_: int = 0, to: int = 100) -> "ValueScale":
-        tk.Label(box, text=label, bg=BG, fg=FG
-                 ).grid(row=row, column=0, sticky="w", pady=6)
-        widget = ValueScale(box, value, from_, to, title=label)
+        lbl = tk.Label(box, text=label, bg=BG, fg=FG)
+        lbl.grid(row=row, column=0, sticky="w", pady=6)
+        widget = ValueScale(box, value, from_, to, title=label, row_label=lbl)
         widget.grid(row=row, column=1, sticky="ew", padx=(12, 0))
         return widget
 
@@ -219,31 +220,27 @@ class SettingsWindow(tk.Toplevel):
         self.v_hover_opacity.set_enabled(cfg.hover_fade)
 
         # ゲーム画面を確認したいときに、押している間だけ退けられるようにする
-        self.v_hide_key_enabled, self._hide_key_toggle_btn = self._toggle(
-            box, "キー押下中は非表示", 8, cfg.hide_key_enabled, self._toggle_hide_key)
-        self.v_hide_key, self._hide_key_combo = self._combobox(
-            box, "非表示にするキー", 9, _HIDE_KEY_LABELS, cfg.hide_key, DEFAULT_KEY)
-        self._hide_key_combo.config(
-            state="readonly" if cfg.hide_key_enabled else "disabled")
+        self.v_hide_key, _ = self._combobox(
+            box, "押下中に非表示", 8, _HIDE_KEY_LABELS, cfg.hide_key, DEFAULT_KEY)
 
         # ミッション中かどうかは、画面右上の EXIT ボタンの有無で判定する
         self.v_mission_only, self._mission_toggle_btn = self._toggle(
-            box, "ミッション中のみ表示", 10, cfg.mission_only, self._toggle_mission_only)
-        self._build_mission_region_row(box, 11)
+            box, "ミッション中のみ表示", 9, cfg.mission_only, self._toggle_mission_only)
+        self._build_mission_region_row(box, 10)
 
         tk.Label(box, text="拡大率はキャラクターと解像度ごとの設定です。",
                  bg=BG, fg="#777777", font=("", 8), anchor="w"
-                 ).grid(row=12, column=0, columnspan=2, sticky="w", pady=(10, 0))
+                 ).grid(row=11, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
     def _build_mission_region_row(self, box: tk.Frame, row: int) -> None:
-        tk.Label(box, text="EXIT ボタン範囲", bg=BG, fg=FG
-                 ).grid(row=row, column=0, sticky="w", pady=6)
+        self._mission_row_lbl = tk.Label(box, text="EXIT ボタン範囲", bg=BG, fg=FG)
+        self._mission_row_lbl.grid(row=row, column=0, sticky="w", pady=6)
         cell = tk.Frame(box, bg=BG)
         cell.grid(row=row, column=1, sticky="w", padx=(12, 0))
 
         self._mission_pick_btn = tk.Button(
             cell, text="範囲を指定", command=self._pick_mission_region,
-            padx=10, pady=2, **flat_btn_style(),
+            padx=10, pady=2, disabledforeground=DISABLED_FG, **flat_btn_style(),
         )
         self._mission_pick_btn.pack(side="left")
         self._mission_state_lbl = tk.Label(cell, text="", bg=BG, fg=MUTED, font=("", 8))
@@ -254,6 +251,7 @@ class SettingsWindow(tk.Toplevel):
     def _sync_mission_row(self) -> None:
         """EXIT ボタンの登録状態と、指定ボタンの有効・無効を合わせる。"""
         enabled = self.v_mission_only.get()
+        self._mission_row_lbl.config(fg=FG if enabled else DISABLED_FG)
         self._mission_pick_btn.config(state="normal" if enabled else "disabled")
 
         key = self._overlay.current_key()
@@ -265,7 +263,7 @@ class SettingsWindow(tk.Toplevel):
             # 実測した解像度以外は当てはめただけなので、合わないことがある
             if status == "default" and key != MEASURED_MISSION_KEY:
                 text += f"（{MEASURED_MISSION_KEY} からの暫定値）"
-        self._mission_state_lbl.config(text=text, fg=MUTED if enabled else "#666666")
+        self._mission_state_lbl.config(text=text, fg=MUTED if enabled else DISABLED_FG)
 
     def _toggle_mission_only(self) -> None:
         # 使わないなら、EXIT ボタンを登録できても意味がないので触らせない
@@ -308,11 +306,6 @@ class SettingsWindow(tk.Toplevel):
         enabled = self._flip(self.v_hover_fade, self._hover_toggle_btn)
         self.v_hover_opacity.set_enabled(enabled)
 
-    def _toggle_hide_key(self) -> None:
-        # 使わないなら、どのキーかを選べても意味がないので触らせない
-        enabled = self._flip(self.v_hide_key_enabled, self._hide_key_toggle_btn)
-        self._hide_key_combo.config(state="readonly" if enabled else "disabled")
-
     def _save_settings(self) -> None:
         try:
             interval = int(self.v_interval.get())
@@ -343,7 +336,6 @@ class SettingsWindow(tk.Toplevel):
             opacity=self.v_opacity.get(),
             hover_fade=self.v_hover_fade.get(),
             hover_opacity=self.v_hover_opacity.get(),
-            hide_key_enabled=self.v_hide_key_enabled.get(),
             hide_key=_HIDE_KEY_VALUES.get(self.v_hide_key.get(), DEFAULT_KEY),
             mission_only=self.v_mission_only.get(),
         )
@@ -363,11 +355,13 @@ class ValueScale(tk.Frame):
     """
 
     def __init__(self, master: tk.Misc, value: int, from_: int = 0, to: int = 100,
-                 title: str = ""):
+                 title: str = "", row_label: tk.Label | None = None):
         super().__init__(master, bg=BG)
         self._from = from_
         self._to = to
         self._editing = False
+        # 無効化したとき、行の見出しも一緒に薄くするために預かる
+        self._row_label = row_label
 
         self.var = tk.IntVar(value=value)
         # つまみの上の数値は右の表示と重複するので出さない
@@ -404,10 +398,14 @@ class ValueScale(tk.Frame):
     def set_enabled(self, enabled: bool) -> None:
         if not enabled:
             self._cancel()
-        self._scale.config(state="normal" if enabled else "disabled")
-        self._value_lbl.config(fg=LINK if enabled else MUTED,
+        # state を変えても Scale の見た目は変わらないので、溝の色も落として無効だと分かるようにする
+        self._scale.config(state="normal" if enabled else "disabled",
+                           troughcolor="#3a3a3a" if enabled else "#2a2a2a")
+        self._value_lbl.config(fg=LINK if enabled else DISABLED_FG,
                                cursor="hand2" if enabled else "",
                                font=("", 9, "underline") if enabled else ("", 9))
+        if self._row_label is not None:
+            self._row_label.config(fg=FG if enabled else DISABLED_FG)
 
     # ------------------------------------------------------------ 直接入力
 

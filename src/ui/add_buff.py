@@ -178,17 +178,35 @@ class AddBuffApp:
 
         self._sep()
 
-        self.dz_banner = DropZone(self.root, "バナー画像 *", "image",
+        self.dz_banner = DropZone(self.root, "バナー画像(png) *", "image",
                                   preview_size=(360, 56), height=100)
         self.dz_banner.pack(fill="x", padx=14, pady=4)
 
+        # 10秒前バナーは音楽バフでしか使わないので、種別が music_buff のときだけ見せる。
+        # 区切り線ごと 1 つの Frame にまとめて pack / pack_forget を切り替える
+        self._tuan_frame = tk.Frame(self.root, bg=self.BG)
+        tk.Frame(self._tuan_frame, bg="#333333", height=1).pack(fill="x", padx=14, pady=4)
+        self.dz_tuan_banner = DropZone(self._tuan_frame, "10秒前バナー画像 (音楽バフ用)",
+                                       "image", preview_size=(360, 56), height=100)
+        self.dz_tuan_banner.pack(fill="x", padx=14, pady=4)
+        # Combobox 選択だけでなく _reset() の v_type.set("normal") にも追随させるため trace で拾う
+        self.v_type.trace_add("write", lambda *_: self._update_tuan_visibility())
+
         self._sep()
 
-        self.dz_sound = DropZone(self.root, "サウンドファイル（wav は mp3 に変換）",
+        self.dz_sound = DropZone(self.root, "サウンドファイル（wav / mp3）",
                                  "audio", height=60)
         self.dz_sound.pack(fill="x", padx=14, pady=4)
 
         self._sep()
+
+    def _update_tuan_visibility(self) -> None:
+        if self.v_type.get() == "music_buff":
+            self._tuan_frame.pack(after=self.dz_banner, fill="x")
+        else:
+            # normal に戻したあと、見えない欄の値が保存されないように空にする
+            self.dz_tuan_banner.reset()
+            self._tuan_frame.pack_forget()
 
     def _build_button(self) -> None:
         self.btn = tk.Button(
@@ -241,6 +259,8 @@ class AddBuffApp:
         if self.dz_inactive.path:
             cp(self.dz_inactive.path, "icon_inactive")
         install_banner(buff_dir, self.dz_banner.path)
+        if self.v_type.get() == "music_buff" and self.dz_tuan_banner.path:
+            install_banner(buff_dir, self.dz_tuan_banner.path, "banner_tuan.png")
         if self.dz_sound.path:
             try:
                 install_sound(buff_dir, self.dz_sound.path)
@@ -267,7 +287,8 @@ class AddBuffApp:
         self.v_display.set("")
         self.v_threshold.set("30")
         self.v_type.set("normal")
-        for dz in (self.dz_active, self.dz_inactive, self.dz_banner, self.dz_sound):
+        for dz in (self.dz_active, self.dz_inactive, self.dz_banner,
+                   self.dz_tuan_banner, self.dz_sound):
             dz.reset()
 
 

@@ -18,6 +18,9 @@ KEY_CHOICES: dict[str, tuple[str, int]] = {
 
 DEFAULT_KEY = "shift"
 
+# 「一時非表示を使わない」を表す値。仮想キーコードが無いので KEY_CHOICES には入れない
+NONE_KEY = "none"
+
 # 選択肢には出さないが、内部で使うキー
 VK_ESCAPE = 0x1B
 
@@ -29,17 +32,25 @@ _user32.GetAsyncKeyState.restype = ctypes.c_short
 def normalize_key(name: Optional[str]) -> str:
     """設定値を選択肢のキー名に整える。未知の値は既定のキーにする。"""
     key = str(name).strip().lower() if name is not None else ""
+    if key == NONE_KEY:
+        return NONE_KEY
     return key if key in KEY_CHOICES else DEFAULT_KEY
 
 
 def key_label(name: str) -> str:
     """表示用のキー名（例: shift -> Shift）。"""
-    return KEY_CHOICES[normalize_key(name)][0]
+    key = normalize_key(name)
+    if key == NONE_KEY:
+        return "なし"
+    return KEY_CHOICES[key][0]
 
 
 def is_key_down(name: str) -> bool:
     """そのキーが今押されているか。"""
-    return is_vk_down(KEY_CHOICES[normalize_key(name)][1])
+    key = normalize_key(name)
+    if key == NONE_KEY:
+        return False
+    return is_vk_down(KEY_CHOICES[key][1])
 
 
 def is_vk_down(vk: int) -> bool:

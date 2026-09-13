@@ -33,9 +33,9 @@ def write_config(buff_dir: Path, name: str, display_name: str, type_: str,
     )
 
 
-def install_banner(buff_dir: Path, src: Path) -> None:
-    # Notifier は banner.png しか探さないので、元の拡張子に関わらず PNG に揃える
-    Image.open(src).convert("RGBA").save(buff_dir / "banner.png")
+def install_banner(buff_dir: Path, src: Path, filename: str = "banner.png") -> None:
+    # Notifier は banner.png / banner_tuan.png しか探さないので、元の拡張子に関わらず PNG に揃える
+    Image.open(src).convert("RGBA").save(buff_dir / filename)
 
 
 def install_sound(buff_dir: Path, src: Path) -> None:

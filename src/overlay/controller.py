@@ -222,7 +222,7 @@ class OverlayController:
             return
 
         # 指定キーを押している間は隠す（下に隠れた画面を見たいときの一時退避）
-        if cfg.hide_key_enabled and is_key_down(cfg.hide_key):
+        if is_key_down(cfg.hide_key):
             self._hide(f"{key_label(cfg.hide_key)} キーで一時非表示")
             return
 
