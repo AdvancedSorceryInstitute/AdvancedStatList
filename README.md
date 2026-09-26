@@ -73,6 +73,11 @@ python src/main.py --allow-multiple
 
 `config/profiles.yaml`と`config/overlay.yaml`、およびそれらが使う画像（`config/profiles/`・`config/overlay/slots/`）は初回起動時に生成されるため、手動で用意する必要はありません。
 
+### 使用上の注意
+
+- 読み取るには状態リストを簡素化していない状態で表示する必要があります
+- 画面左上のパーティ一覧表示よりも右側に状態リストを配置する必要があります
+
 ### 監視するバフを追加する
 
 設定ウィンドウの「バフ追加」タブから追加できます。
