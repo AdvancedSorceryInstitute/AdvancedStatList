@@ -13,6 +13,8 @@ from .ocr import OCRReader
 from .timer_manager import TimerManager
 from notify.notifier import Notifier
 from charprofile.store import CharacterProfile, ProfileStore
+from overlay.config import OverlayConfig
+from overlay.mission import MissionDetector
 from win.trash import send_to_trash
 
 if getattr(sys, 'frozen', False):
@@ -30,6 +32,9 @@ REGION_DEBUG_DIR = BASE_DIR / "debug" / "region"
 TUAN_BUFF_NAME = "SongOfTuan"
 TUAN_BANNER_NAME = "banner_tuan.png"
 
+INACTIVE_BANNER_NAME = "banner_inactive.png"
+INACTIVE_SOUND_NAME = "sound_inactive"
+
 
 class ScanController:
     def __init__(self, store: ProfileStore):
@@ -42,6 +47,11 @@ class ScanController:
         # 監視するバフとその並び順はプロファイル（キャラクター）ごとに持つ
         self._store = store
         self._profile: CharacterProfile = store.current()
+
+        # バフ未使用通知: ミッション中に非アクティブアイコンを見つけ始めた時刻（バフごと）
+        self._mission: Optional[MissionDetector] = None
+        self._last_in_mission = False
+        self._inactive_since: dict[str, float] = {}
 
         self._config = self._load_config()
         self._build_components()
@@ -75,6 +85,7 @@ class ScanController:
 
         self._tuan_support_enabled: bool = cfg.get("tuan_support_enabled", True)
         self._tuan_check_threshold: int = cfg.get("tuan_check_threshold", 10)
+        self._inactive_alert_seconds: int = cfg.get("inactive_alert_seconds", 30)
 
         volume: int = cfg.get("volume", 100)
         banner_y_offset: int = cfg.get("banner_y_offset", 80)
@@ -112,6 +123,11 @@ class ScanController:
         """スキャンを一時停止する（スレッドは維持し、再開可能）。"""
         self._scan_active.clear()
         self.timer_manager.clear_all()
+        self._inactive_since.clear()
+
+    def set_mission_detector(self, detector: MissionDetector) -> None:
+        """バフ未使用通知のミッション判定に使う（オーバーレイと同じ判定材料を使う）。"""
+        self._mission = detector
 
     def trigger_scan(self) -> None:
         """次のスキャンを即時実行させる。スキャンが停止中の場合は何もしない。"""
@@ -145,10 +161,16 @@ class ScanController:
 
     def _do_scan(self) -> None:
         results = self.scanner.scan()
+        in_mission = self._check_mission()
+        if not in_mission:
+            self._inactive_since.clear()
+        now = time.time()
         for result in results:
             buff_cfg = self.buff_configs.get(result.buff_name, {})
             if not self.is_buff_enabled(result.buff_name):
                 continue
+            if in_mission:
+                self._track_inactive(result.buff_name, result.is_active, buff_cfg, now)
             # トゥアンの歌は延長支援の判定用に残り時間だけタイマー管理し、通知はしない
             is_tuan = result.buff_name == TUAN_BUFF_NAME
             threshold = None if is_tuan else buff_cfg.get("warning_threshold", self._default_threshold)
@@ -175,6 +197,41 @@ class ScanController:
                 if self._debug_save_auto:
                     self._save_debug_image(result.buff_name, region_img, raw)
 
+    def _check_mission(self) -> bool:
+        """直前のスキャン画像からミッション中かを判定する。判定できなければ False。"""
+        if self._mission is None:
+            return False
+        capture = self.scanner.last_client_capture()
+        if capture is None:
+            return False
+        screen, client = capture
+        key = OverlayConfig.profile_key(client)
+        # ホバーで EXIT ボタンの見た目が変わり一致しなくなるので、その間は直前の結果を使う
+        if self._mission.cursor_near(key, client):
+            return self._last_in_mission
+        found = self._mission.detect(key, screen[:, :, ::-1])
+        self._last_in_mission = bool(found)
+        return self._last_in_mission
+
+    def _track_inactive(self, name: str, is_active: bool, buff_cfg: dict, now: float) -> None:
+        """ミッション中に非アクティブが続いたバフを、inactive_alert_seconds 秒ごとに通知する。
+
+        アイコンが見つからなかったスキャンでは呼ばれないので、一時的に隠れても計測は続く。
+        """
+        # 数値で書かれた config.yaml もあるので、真偽値に限らず 0 以外を ON とみなす
+        enabled = bool(buff_cfg.get("inactive_alert"))
+        if name == TUAN_BUFF_NAME or not enabled or is_active:
+            self._inactive_since.pop(name, None)
+            return
+        since = self._inactive_since.get(name)
+        if since is None:
+            self._inactive_since[name] = now
+        elif now - since >= self._inactive_alert_seconds:
+            print(f"[{name}] 未使用のまま {int(now - since)} 秒経過。通知します")
+            self.notifier.notify(name, 0, banner_name=INACTIVE_BANNER_NAME,
+                                 sound_name=INACTIVE_SOUND_NAME, banner_fallback=False)
+            self._inactive_since[name] = now
+
     def _on_tuan_check(self, name: str, remaining: float) -> None:
         """音楽バフが残り閾値秒に達したときの トゥアンの歌 チェック（tick スレッドから呼ばれる）。"""
         if not self._tuan_support_enabled:
@@ -194,6 +251,7 @@ class ScanController:
         with self._lock:
             self._profile = profile
         self.timer_manager.clear_all()
+        self._inactive_since.clear()
         self.trigger_scan()
 
     def is_buff_enabled(self, name: str) -> bool:
@@ -212,6 +270,7 @@ class ScanController:
         self._store.set_buff_enabled(self._profile.id, name, enabled)
         if not enabled:
             self.timer_manager.deactivate(name)
+            self._inactive_since.pop(name, None)
 
     def get_timers(self):
         return self.timer_manager.get_all()
@@ -243,9 +302,10 @@ class ScanController:
         self._store.forget_buff(name)
         self.reload_buffs()
         self.timer_manager.remove(name)
+        self._inactive_since.pop(name, None)
         return True
 
-    def update_settings(self, scan_interval: Optional[int] = None, volume: Optional[int] = None, banner_y_offset: Optional[int] = None, tuan_support_enabled: Optional[bool] = None) -> None:
+    def update_settings(self, scan_interval: Optional[int] = None, volume: Optional[int] = None, banner_y_offset: Optional[int] = None, tuan_support_enabled: Optional[bool] = None, inactive_alert_seconds: Optional[int] = None) -> None:
         with open(CONFIG_PATH, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         if scan_interval is not None:
@@ -265,6 +325,9 @@ class ScanController:
             for name, cfg in self.buff_configs.items():
                 if cfg.get("type") == "music_buff":
                     self.timer_manager.set_tuan_threshold(name, new_th)
+        if inactive_alert_seconds is not None:
+            self._inactive_alert_seconds = inactive_alert_seconds
+            data["inactive_alert_seconds"] = inactive_alert_seconds
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
 

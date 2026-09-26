@@ -1,5 +1,6 @@
 banner_y_offset: 80
 debug_save_auto: false
+inactive_alert_seconds: 30
 match_threshold: 0.9
 monitor_index: 1
 ocr_region:

@@ -3,3 +3,4 @@ display_name: 魔法攻撃力強化
 type: nomal
 enabled: true              # false にするとスキャン・通知をスキップ
 warning_threshold: 5      # 何秒前に通知するか
+inactive_alert: true         # ミッション中に未使用が続いたら通知するか（秒数は全体設定）

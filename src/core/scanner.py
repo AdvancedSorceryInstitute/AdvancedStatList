@@ -23,6 +23,7 @@ class Scanner:
         self._templates: dict[str, dict] = {}
         self._capture_offset: tuple[int, int] = (0, 0)  # (left, top) 絶対座標オフセット
         self._window_captured: Optional[bool] = None  # 直前のキャプチャ対象（ログ抑制用）
+        self._last_screen: Optional[np.ndarray] = None
         self._load_templates()
 
     def _load_templates(self) -> None:
@@ -56,12 +57,26 @@ class Scanner:
 
     def scan(self) -> list[ScanResult]:
         screen = self._capture_screen()
+        self._last_screen = screen
         results = []
         for buff_name, templates in self._templates.items():
             result = self._find_buff(screen, buff_name, templates)
             if result:
                 results.append(result)
         return results
+
+    def last_client_capture(self) -> Optional[tuple[np.ndarray, dict]]:
+        """直前の scan() で撮った画面（BGR）と、そのクライアント領域の絶対座標。
+
+        ウィンドウが見つからずモニター全体を撮ったときは、クライアント領域と
+        対応が取れないので None を返す。
+        """
+        screen = self._last_screen
+        if screen is None or not self._window_captured:
+            return None
+        h, w = screen.shape[:2]
+        left, top = self._capture_offset
+        return screen, {"left": left, "top": top, "width": w, "height": h}
 
     def get_text_region_image(self, icon_rect: tuple, ocr_cfg: dict) -> np.ndarray:
         x, y, w, h = icon_rect

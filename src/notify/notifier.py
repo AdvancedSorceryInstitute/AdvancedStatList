@@ -28,15 +28,20 @@ class Notifier:
         self._queue: queue.Queue = queue.Queue()
         threading.Thread(target=self._worker_loop, daemon=True).start()
 
-    def notify(self, buff_name: str, remaining: float, banner_name: str = "banner.png") -> None:
-        self._queue.put((buff_name, remaining, banner_name))
+    def notify(self, buff_name: str, remaining: float, banner_name: str = "banner.png",
+               sound_name: str = "sound", banner_fallback: bool = True) -> None:
+        """sound_name は拡張子を除いたファイル名。
+
+        banner_fallback が False なら、指定バナーが無いときは banner.png を使わず出さない。
+        """
+        self._queue.put((buff_name, remaining, banner_name, sound_name, banner_fallback))
 
     def _worker_loop(self) -> None:
         while True:
-            buff_name, remaining, banner_name = self._queue.get()
+            buff_name, remaining, banner_name, sound_name, banner_fallback = self._queue.get()
             try:
-                sound_path = self._find_sound(buff_name)
-                banner_path = self._find_banner(buff_name, banner_name)
+                sound_path = self._find_sound(buff_name, sound_name)
+                banner_path = self._find_banner(buff_name, banner_name, banner_fallback)
 
                 # 音とバナーを同時に開始し、両方の完了を待つ
                 threads = []
@@ -52,19 +57,20 @@ class Notifier:
             finally:
                 self._queue.task_done()
 
-    def _find_sound(self, buff_name: str) -> Optional[Path]:
+    def _find_sound(self, buff_name: str, sound_name: str = "sound") -> Optional[Path]:
         if self._buffs_dir is None:
             return None
         buff_dir = self._buffs_dir / buff_name
-        for path in buff_dir.glob("sound.*"):
+        for path in buff_dir.glob(f"{sound_name}.*"):
             return path
         return None
 
-    def _find_banner(self, buff_name: str, banner_name: str = "banner.png") -> Optional[Path]:
+    def _find_banner(self, buff_name: str, banner_name: str = "banner.png",
+                     fallback: bool = True) -> Optional[Path]:
         if self._buffs_dir is None:
             return None
         path = self._buffs_dir / buff_name / banner_name
-        if not path.exists():
+        if not path.exists() and fallback:
             # 指定バナーが無ければ通常バナーにフォールバック
             path = self._buffs_dir / buff_name / "banner.png"
         return path if path.exists() else None

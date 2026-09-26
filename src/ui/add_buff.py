@@ -16,6 +16,7 @@ from tkinterdnd2 import DND_FILES, TkinterDnD
 from core.buff_files import install_banner, install_sound, write_config
 from core.controller import BUFFS_DIR
 from .spin import bind_spin
+from .theme import ACCENT, flat_btn_style
 
 # システム予約バフID（上書きすると専用の config が壊れるため追加禁止）
 RESERVED_BUFF_IDS = {"SongOfTuan"}
@@ -210,9 +211,8 @@ class AddBuffApp:
 
     def _build_button(self) -> None:
         self.btn = tk.Button(
-            self.root, text="追加", command=self._execute,
-            bg="#0078d4", fg="white", activebackground="#005fa3", activeforeground="white",
-            relief="flat", padx=24, pady=9, font=("", 11, "bold"), cursor="hand2",
+            self.root, text="追加", command=self._execute, padx=18, pady=6,
+            **flat_btn_style(bg=ACCENT, fg="white", active="#005fa3"),
         )
         self.btn.pack(pady=(4, 18))
 

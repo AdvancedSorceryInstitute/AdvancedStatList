@@ -190,10 +190,13 @@ class SettingsWindow(tk.Toplevel):
         self.v_tuan, self._tuan_toggle_btn = self._toggle(
             box, "トゥアン延長支援", 3, self.controller._tuan_support_enabled,
             self._toggle_tuan_support)
+        self.v_inactive_alert = self._entry(box, "未使用通知秒数", 4,
+                                            self.controller._inactive_alert_seconds,
+                                            minimum=1)
 
         tk.Label(box, text="これらの設定は全プロファイル共通です。",
                  bg=BG, fg="#777777", font=("", 8), anchor="w"
-                 ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(10, 0))
+                 ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
     def _build_overlay_group(self, parent: tk.Frame) -> None:
         cfg = self._overlay.config
@@ -310,6 +313,7 @@ class SettingsWindow(tk.Toplevel):
         try:
             interval = int(self.v_interval.get())
             banner_y = int(self.v_banner_y.get())
+            inactive_alert = int(self.v_inactive_alert.get())
             scale = float(self.v_scale.get())
             gap = int(self.v_gap.get())
             fps = int(self.v_fps.get())
@@ -317,10 +321,10 @@ class SettingsWindow(tk.Toplevel):
             messagebox.showerror("入力エラー", "数値の項目は数値で入力してください。",
                                  parent=self)
             return
-        if interval <= 0 or scale <= 0 or gap < 0 or fps < 1:
+        if interval <= 0 or inactive_alert <= 0 or scale <= 0 or gap < 0 or fps < 1:
             messagebox.showerror(
                 "入力エラー",
-                "スキャン間隔・拡大率・更新レートは 0 より大きい値を、\n"
+                "スキャン間隔・未使用通知秒数・拡大率・更新レートは 0 より大きい値を、\n"
                 "余白は 0 以上を入力してください。",
                 parent=self)
             return
@@ -328,6 +332,7 @@ class SettingsWindow(tk.Toplevel):
         self.controller.update_settings(
             scan_interval=interval, volume=self.v_volume.get(),
             banner_y_offset=banner_y, tuan_support_enabled=self.v_tuan.get(),
+            inactive_alert_seconds=inactive_alert,
         )
         saved = self._overlay.apply_settings(
             scale=scale, gap=gap, fps=min(30, fps),

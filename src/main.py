@@ -42,6 +42,7 @@ def main() -> None:
     overlay = OverlayController(OVERLAY_CONFIG_PATH, OVERLAY_SLOTS_DIR,
                                 OVERLAY_MISSION_DIR, MISSION_DEFAULTS_DIR,
                                 store.default_profile().id)
+    controller.set_mission_detector(overlay.mission)
     manager = ProfileManager(store, controller, overlay)
     manager.start()
 

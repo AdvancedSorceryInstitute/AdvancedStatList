@@ -13,6 +13,7 @@
      遷移にだけ grace 秒の猶予を置く。逆向き（外→中）は即座に反映する。
 """
 
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -42,6 +43,8 @@ class MissionDetector:
         self._defaults_dir = defaults_dir
         self._settings = settings
 
+        # テンプレートの読み込み結果はスキャンスレッドの detect() とも共有する
+        self._load_lock = threading.Lock()
         self._loaded_key: Optional[str] = None
         self._template: Optional[np.ndarray] = None
 
@@ -90,27 +93,31 @@ class MissionDetector:
 
     def _invalidate(self) -> None:
         """テンプレートを読み直させ、判定結果も捨てる（範囲を変えたとき）。"""
-        self._loaded_key = None
-        self._template = None
+        with self._load_lock:
+            self._loaded_key = None
+            self._template = None
         self._in_mission = False
         self._checked_at = 0.0
         self._seen_at = 0.0
 
     def _load(self, key: str) -> Optional[np.ndarray]:
-        if self._loaded_key == key:
-            return self._template
-        path = self.template_path(key)
-        if not path.exists():
-            path = self._default_path()
-        template = None
-        if path.exists():
-            try:
-                template = np.array(Image.open(path).convert("RGB"))
-            except Exception as e:
-                print(f"EXIT ボタンのテンプレートを読み込めません: {e}")
-        self._loaded_key = key
-        self._template = template
-        return template
+        # 読み込み中に _invalidate() が走ると、捨てたはずの古いテンプレートが
+        # 残ってしまうので、ファイルの読み込みごとロックの内側で行う
+        with self._load_lock:
+            if self._loaded_key == key:
+                return self._template
+            path = self.template_path(key)
+            if not path.exists():
+                path = self._default_path()
+            template = None
+            if path.exists():
+                try:
+                    template = np.array(Image.open(path).convert("RGB"))
+                except Exception as e:
+                    print(f"EXIT ボタンのテンプレートを読み込めません: {e}")
+            self._loaded_key = key
+            self._template = template
+            return template
 
     # ------------------------------------------------------------ 判定
 
@@ -131,6 +138,32 @@ class MissionDetector:
             if not self._cursor_near(client, rect):
                 self._update(now, self._match(capture, client, rect, template))
         return self._in_mission
+
+    def detect(self, key: str, image: np.ndarray) -> Optional[bool]:
+        """キャプチャ済みのクライアント領域画像（RGB）に EXIT ボタンがあるか。
+
+        範囲・テンプレートが無い、または大きさが合わないときは None（判定不能）。
+        オーバーレイ用の判定状態には触れないので、他のスレッドから呼んでよい。
+        """
+        rect = self._settings.region(key)
+        template = self._load(key)
+        if rect is None or template is None:
+            return None
+        x, y, w, h = rect
+        if template.shape[:2] != (h, w):
+            return None
+        crop = image[y:y + h, x:x + w]
+        if crop.shape != template.shape:
+            return None   # 範囲がキャプチャ画像からはみ出している
+        # 呼び出し側が BGR を反転したビューを渡すことがあり、OpenCV は負のストライドを扱えない
+        crop = np.ascontiguousarray(crop)
+        score = float(cv2.matchTemplate(crop, template, cv2.TM_CCOEFF_NORMED)[0][0])
+        return score >= self._settings.threshold
+
+    def cursor_near(self, key: str, client: dict) -> bool:
+        """EXIT ボタンの周辺にカーソルがあるか（範囲が無ければ False）。"""
+        rect = self._settings.region(key)
+        return rect is not None and self._cursor_near(client, rect)
 
     def _update(self, now: float, found: bool) -> None:
         if found:

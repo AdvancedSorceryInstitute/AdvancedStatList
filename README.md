@@ -11,6 +11,7 @@
 - バフアイコンはテンプレートマッチングで検出
 - 残り時間はアイコン右のテキストを読み取り、内部タイマーで管理
 - 通知バナーはクリック透過
+- 未使用状態の通知(ミッション中、バフが掛かっていない状態が続いた場合に通知)
 
 ### スキルCTオーバーレイ
 
@@ -66,6 +67,7 @@ python src/main.py --allow-multiple
 | `template_threshold` | 数字認識のマッチング閾値 |
 | `banner_y_offset` | バナーをゲームウィンドウ上端から何px下に出すか |
 | `volume` | 通知音量（0〜100） |
+| `inactive_alert_seconds` | バフ未使用通知の秒数（1 以上。既定 30） |
 
 `ocr_region` は、バフアイコン横の残り時間テキストの読み取り範囲です。ゲームの解像度やUIスケールによって調整が必要になる場合があります。
 
@@ -81,17 +83,31 @@ python src/main.py --allow-multiple
 
 ```
 buffs/{名前}/
-  config.yaml         必須（display_name, name, type, enabled, warning_threshold）
+  config.yaml         必須（display_name, name, type, enabled, warning_threshold。inactive_alert は任意）
   icon_active.png     必須（検出に使うバフアイコン）
   icon_inactive.png   任意
   banner.png          通知バナーの画像
   banner_tuan.png     任意（音楽バフのみ。10秒前チェック時のバナー。無ければ banner.png を使う）
+  banner_inactive.png 任意（バフ未使用通知のバナー。無ければバナーを出さない）
   sound.mp3           任意（なければ無音）
+  sound_inactive.mp3  任意（バフ未使用通知の音。なければ無音）
 ```
 
 banner.png は `python tools/make_banner.py` で作れます。表示名・秒数・アイコン画像を指定すると、既存のバナーと同じ様式の画像を生成します。
 
 追加したバフは、バフ管理タブで右クリックして「設定...」を選ぶと、通知秒数・バナー・サウンドなどを変更できます。
+
+#### バフ未使用通知
+
+ミッション中にバフが掛かっていない状態（`icon_inactive.png` が検出された状態）が `inactive_alert_seconds` 秒以上続くと、`sound_inactive.*` と `banner_inactive.png` で通知します。掛けないままでいると、`inactive_alert_seconds` 秒ごとに繰り返し通知します。
+
+- 秒数は全バフ共通で、設定タブの「未使用通知秒数」で指定します（`config/config.yaml` の `inactive_alert_seconds`）
+- 通知するかどうかはバフごとに、バフの設定ウィンドウの「未使用状態を通知」で切り替えます（`config.yaml` の `inactive_alert: true / false`）。未記載なら通知しません
+- `sound_inactive.*` が無ければ音は鳴らず、`banner_inactive.png` が無ければバナーは出ません（`sound.*` / `banner.png` は使いません）
+- `icon_inactive.png` が無いバフ、現在のプロファイルで OFF のバフ、トゥアンの歌は対象外です
+  - そのため、ゲーム内では状態リストのお気に入りに登録したバフのみが対象となります
+- ミッション中かどうかはオーバーレイの「ミッション中のみ表示」と同じく EXIT ボタンの有無で判定します。オーバーレイの設定に関係なく動作し、判定できない場合はミッション外として扱います
+- 非アクティブアイコンを検出したスキャンで判定するため、通知は最大でスキャン間隔の分だけ遅れます。アイコンが一時的に見えなくなっても計測は続きます
 
 ### スキルオーバーレイ
 
