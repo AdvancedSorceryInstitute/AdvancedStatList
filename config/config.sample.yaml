@@ -1,5 +1,7 @@
 banner_y_offset: 80
 debug_save_auto: false
+debug_scan_log: false
+debug_scan_log_buffs: []
 inactive_alert_seconds: 30
 match_threshold: 0.9
 monitor_index: 1

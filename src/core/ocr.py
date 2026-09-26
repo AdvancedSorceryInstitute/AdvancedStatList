@@ -15,6 +15,8 @@ class OCRReader:
             self._template_ocr = TemplateOCR(template_dir, template_threshold)
         self.last_color = "unknown"
         self.last_raw_text = ""
+        self.last_parsed: Optional[int] = None
+        self.last_reject_reason: Optional[str] = None
 
     def read_time(self, image: np.ndarray) -> Optional[int]:
         if self._template_ocr is None:
@@ -22,4 +24,6 @@ class OCRReader:
         result = self._template_ocr.read_time(image)
         self.last_raw_text = self._template_ocr.last_raw_text
         self.last_color = self._template_ocr.last_color
+        self.last_parsed = self._template_ocr.last_parsed
+        self.last_reject_reason = self._template_ocr.last_reject_reason
         return result

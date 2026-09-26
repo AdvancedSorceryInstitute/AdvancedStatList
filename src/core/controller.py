@@ -10,6 +10,7 @@ import yaml
 
 from .scanner import Scanner
 from .ocr import OCRReader
+from .scan_logger import ScanLogger
 from .timer_manager import TimerManager
 from notify.notifier import Notifier
 from charprofile.store import CharacterProfile, ProfileStore
@@ -27,6 +28,7 @@ CONFIG_SAMPLE_PATH = CONFIG_DIR / "config.sample.yaml"
 BUFFS_DIR = BASE_DIR / "buffs"
 DEBUG_DIR = BASE_DIR / "debug" / "auto_debug"
 REGION_DEBUG_DIR = BASE_DIR / "debug" / "region"
+SCAN_LOG_DIR = BASE_DIR / "debug" / "scan_log"
 
 # トゥアン延長支援: 音楽バフはトゥアンの歌が掛かった状態で切れると延長される
 TUAN_BUFF_NAME = "SongOfTuan"
@@ -87,10 +89,16 @@ class ScanController:
         self._tuan_check_threshold: int = cfg.get("tuan_check_threshold", 10)
         self._inactive_alert_seconds: int = cfg.get("inactive_alert_seconds", 30)
 
+        self._scan_logger: Optional[ScanLogger] = None
+        if cfg.get("debug_scan_log", False):
+            self._scan_logger = ScanLogger(SCAN_LOG_DIR, cfg.get("debug_scan_log_buffs") or [])
+            print(f"スキャン記録モード: ON（出力先: {SCAN_LOG_DIR}）")
+
         volume: int = cfg.get("volume", 100)
         banner_y_offset: int = cfg.get("banner_y_offset", 80)
         self.notifier = Notifier(buffs_dir=BUFFS_DIR, volume=volume, banner_y_offset=banner_y_offset)
-        self.timer_manager = TimerManager(on_warning=self.notifier.notify, on_tuan_check=self._on_tuan_check)
+        on_warning = self._on_warning_logged if self._scan_logger else self.notifier.notify
+        self.timer_manager = TimerManager(on_warning=on_warning, on_tuan_check=self._on_tuan_check)
 
         monitor_index: int = cfg.get("monitor_index", 1)
         match_threshold: float = cfg.get("match_threshold", 0.8)
@@ -161,6 +169,7 @@ class ScanController:
 
     def _do_scan(self) -> None:
         results = self.scanner.scan()
+        scan_id = self._scan_logger.next_scan_id() if self._scan_logger else 0
         in_mission = self._check_mission()
         if not in_mission:
             self._inactive_since.clear()
@@ -176,6 +185,8 @@ class ScanController:
             threshold = None if is_tuan else buff_cfg.get("warning_threshold", self._default_threshold)
 
             if not result.is_active:
+                if self._scan_logger:
+                    self._log_scan_row(scan_id, result.buff_name)
                 print(f"[{result.buff_name}] 切れています")
                 self.timer_manager.deactivate(result.buff_name)
                 continue
@@ -186,6 +197,8 @@ class ScanController:
             remaining = self.ocr_reader.read_time(region_img)
             raw = getattr(self.ocr_reader, "last_raw_text", "")
             color = getattr(self.ocr_reader, "last_color", "?")
+            if self._scan_logger:
+                self._log_scan_row(scan_id, result.buff_name, remaining, region_img)
 
             if remaining is not None:
                 print(f"[{result.buff_name}] 残り {remaining} 秒  (OCR: {repr(raw)}, 色: {color})")
@@ -196,6 +209,38 @@ class ScanController:
                 print(f"[{result.buff_name}] 読み取れず  (OCR: {repr(raw)})")
                 if self._debug_save_auto:
                     self._save_debug_image(result.buff_name, region_img, raw)
+
+        if self._scan_logger:
+            # 見つからなかったバフは results に現れないので、照合結果から補って記録する
+            for name, info in self.scanner.last_match_info.items():
+                if not info.get("found") and self.is_buff_enabled(name):
+                    self._log_scan_row(scan_id, name)
+
+    def _log_scan_row(self, scan_id: int, name: str, remaining: Optional[int] = None,
+                      region_img=None) -> None:
+        """スキャン記録モードで 1 バフ分の行と画像を書く。region_img があれば OCR 実行済みとみなす。"""
+        try:
+            logger = self._scan_logger
+            match = self.scanner.last_match_info.get(name)
+            # timer_manager.update() より前に呼ぶこと。更新後だと今回の読み取り値になってしまう
+            timer = self.timer_manager.get_all().get(name)
+            predicted = timer.remaining if timer is not None and timer.active else None
+            ocr = None
+            binary_img = None
+            if region_img is not None:
+                ocr = {
+                    "ocr_raw": self.ocr_reader.last_raw_text,
+                    "parsed": self.ocr_reader.last_parsed,
+                    "color": self.ocr_reader.last_color,
+                    "value": remaining,
+                    "reject": self.ocr_reader.last_reject_reason,
+                }
+                if logger.wants_images(name) and self.ocr_reader._template_ocr is not None:
+                    binary_img = self.ocr_reader._template_ocr._preprocess(region_img)
+            logger.log_scan(scan_id, name, match, ocr, predicted)
+            logger.save_images(scan_id, name, self.scanner.last_screen(), match, region_img, binary_img)
+        except Exception as e:
+            print(f"スキャン記録: 記録できません: {e}")
 
     def _check_mission(self) -> bool:
         """直前のスキャン画像からミッション中かを判定する。判定できなければ False。"""
@@ -242,7 +287,14 @@ class ScanController:
             print(f"[{name}] トゥアンの歌あり（残り {int(tuan.remaining)} 秒）。延長見込み")
             return
         print(f"[{name}] トゥアンの歌なし。再通知します")
+        if self._scan_logger:
+            self._scan_logger.log_warning("tuan_warning", name, remaining)
         self.notifier.notify(name, remaining, banner_name=TUAN_BANNER_NAME)
+
+    def _on_warning_logged(self, name: str, remaining: float) -> None:
+        """スキャン記録モード時の通知コールバック（tick スレッドから呼ばれる）。"""
+        self._scan_logger.log_warning("warning", name, remaining)
+        self.notifier.notify(name, remaining)
 
     # ------------------------------------------------------------ プロファイル
 

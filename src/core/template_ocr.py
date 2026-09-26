@@ -26,6 +26,8 @@ class TemplateOCR:
         self._template_widths: dict[str, int] = {}
         self.last_raw_text = ""
         self.last_color = "unknown"
+        self.last_parsed: Optional[int] = None
+        self.last_reject_reason: Optional[str] = None
         self._load_templates(Path(template_dir))
 
     def _load_templates(self, template_dir: Path) -> None:
@@ -45,6 +47,8 @@ class TemplateOCR:
         self.last_raw_text = self._recognize(processed)
         value = self._parse_time(self.last_raw_text)
         self.last_color = "unknown"
+        self.last_parsed = value
+        self.last_reject_reason = "parse_failed" if value is None else None
 
         # 色との整合性チェック: 60秒未満は赤文字のはず。
         # 白文字なのに60秒未満を読み取った場合は、実際は60秒以上の長いタイマーを
@@ -55,6 +59,7 @@ class TemplateOCR:
                 self.last_color = "red"
             elif is_red is False:
                 self.last_color = "white"
+                self.last_reject_reason = "white_under_60"
                 return None
             # is_red is None（判定不能）は過度に弾かず採用する
         return value
