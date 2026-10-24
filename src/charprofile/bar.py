@@ -1,7 +1,7 @@
 """ウィンドウ上部のプロファイルバー。
 
 左に現在のキャラクター名（クリックで手動切り替え）、その右に自動識別、
-右端に設定ウィンドウを開くボタンを置く。
+右端に設定ウィンドウを開くボタンを置く。判別結果のメッセージはその下の行に出す。
 """
 
 import tkinter as tk
@@ -49,9 +49,14 @@ class ProfileBar:
             padx=12, pady=3, **flat_btn_style(bg=BG_BTN),
         ).pack(side="right")
 
-        self._message_lbl = tk.Label(self._frame, text="", bg=BG, fg=MUTED,
-                                     anchor="w", font=("", 8))
-        self._message_lbl.pack(side="left", fill="x", expand=True, padx=(8, 8))
+        # ボタンの隙間に置くと判別失敗の理由が見切れるため、専用の行に置く。
+        # 空のときも行を残すのは、表示のたびにタブの高さが変わって揺れるのを避けるため
+        self._message_lbl = tk.Label(master, text="", bg=BG, fg=MUTED,
+                                     anchor="w", justify="left", font=("", 8))
+        self._message_lbl.pack(fill="x", padx=8, pady=(2, 0))
+        # wraplength は固定値しか取らないため、ウィンドウ幅の変化に合わせて都度更新する
+        self._message_lbl.bind(
+            "<Configure>", lambda e: self._message_lbl.config(wraplength=e.width))
 
         self.refresh()
 

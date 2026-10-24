@@ -8,10 +8,12 @@
 全プロファイルを並べて比べ、1位と2位の差（マージン）で確信度を測る。
 """
 
+import ctypes
 from dataclasses import dataclass
 from typing import Optional
 
 import cv2
+import mss
 import numpy as np
 from PIL import Image
 
@@ -49,16 +51,36 @@ def current_key() -> Optional[str]:
 def grab_region(rect: tuple[int, int, int, int]) -> Optional[Image.Image]:
     """クライアント領域を1枚取得し、識別範囲を切り出す。
 
-    PrintWindow を使うので、ゲームが背面にあっても中身が取れる。
+    PrintWindow が使えれば、ゲームが背面にあっても中身が取れる。
     GUI を操作しながら記録・判別できるのはこのため。
+    """
+    return _grab_region(rect)[0]
+
+
+def _grab_region(rect: tuple[int, int, int, int]) -> tuple[Optional[Image.Image], bool]:
+    """grab_region の本体。画面キャプチャで取得したかどうかも返す。
+
+    管理者権限で動くゲームへは、非管理者の本アプリから PrintWindow が効かない（UIPI）。
+    その場合は画面に映っている内容を撮るため、重なったウィンドウも写り込む。
     """
     client = get_client_rect()
     if client is None:
-        return None
+        return None, False
     shot = capture_client(find_hwnd(), client["width"], client["height"])
-    if shot is None:
-        return None
-    return crop_region(shot, rect)
+    if shot is not None:
+        return crop_region(shot, rect), False
+
+    region = {
+        "left": client["left"], "top": client["top"],
+        "width": client["width"], "height": client["height"],
+    }
+    try:
+        with mss.MSS() as sct:
+            raw = np.array(sct.grab(region))
+    except Exception:
+        return None, False
+    shot = Image.fromarray(raw[:, :, 2::-1])  # BGRA → RGB
+    return crop_region(shot, rect), True
 
 
 def crop_region(shot: Image.Image, rect: tuple[int, int, int, int]) -> Optional[Image.Image]:
@@ -107,6 +129,13 @@ def _score(current: np.ndarray, fingerprint: np.ndarray) -> Optional[float]:
     return float(res[0][0])
 
 
+def _screen_capture_hint() -> str:
+    """画面キャプチャで判別できなかったときに理由の末尾へ付ける案内。"""
+    if ctypes.windll.shell32.IsUserAnAdmin():
+        return "（識別範囲に重なるウィンドウをどけてください）"
+    return "（識別範囲に重なるウィンドウをどけるか、管理者として起動してください）"
+
+
 def identify(store: ProfileStore) -> IdentifyResult:
     """現在の画面がどのプロファイルのキャラクターかを判別する。"""
     client = get_client_rect()
@@ -121,7 +150,7 @@ def identify(store: ProfileStore) -> IdentifyResult:
         return IdentifyResult(reason=f"{key} の識別範囲が未設定です",
                               retriable=bool(store.detect.regions))
 
-    image = grab_region(rect)
+    image, via_screen = _grab_region(rect)
     if image is None:
         return IdentifyResult(reason="ゲーム画面を取得できませんでした")
     current = np.array(image)
@@ -145,11 +174,12 @@ def identify(store: ProfileStore) -> IdentifyResult:
     second = scores[1][0] if len(scores) > 1 else 0.0
     margin = best - second
 
+    hint = _screen_capture_hint() if via_screen else ""
     if best < store.detect.min_score:
         return IdentifyResult(score=best, margin=margin,
-                              reason=f"どの識別画像とも一致しません ({best:.2f})")
+                              reason=f"どの識別画像とも一致しません ({best:.2f}){hint}")
     if len(scores) > 1 and margin < store.detect.min_margin:
         return IdentifyResult(score=best, margin=margin,
-                              reason=f"候補が絞り込めません ({best:.2f} / 差 {margin:.2f})")
+                              reason=f"候補が絞り込めません ({best:.2f} / 差 {margin:.2f}){hint}")
 
     return IdentifyResult(profile=profile, score=best, margin=margin)
