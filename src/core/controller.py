@@ -179,7 +179,7 @@ class ScanController:
             if not self.is_buff_enabled(result.buff_name):
                 continue
             if in_mission:
-                self._track_inactive(result.buff_name, result.is_active, buff_cfg, now)
+                self._track_inactive(result.buff_name, result.is_active, now)
             # トゥアンの歌は延長支援の判定用に残り時間だけタイマー管理し、通知はしない
             is_tuan = result.buff_name == TUAN_BUFF_NAME
             threshold = None if is_tuan else buff_cfg.get("warning_threshold", self._default_threshold)
@@ -258,14 +258,12 @@ class ScanController:
         self._last_in_mission = bool(found)
         return self._last_in_mission
 
-    def _track_inactive(self, name: str, is_active: bool, buff_cfg: dict, now: float) -> None:
+    def _track_inactive(self, name: str, is_active: bool, now: float) -> None:
         """ミッション中に非アクティブが続いたバフを、inactive_alert_seconds 秒ごとに通知する。
 
         アイコンが見つからなかったスキャンでは呼ばれないので、一時的に隠れても計測は続く。
         """
-        # 数値で書かれた config.yaml もあるので、真偽値に限らず 0 以外を ON とみなす
-        enabled = bool(buff_cfg.get("inactive_alert"))
-        if name == TUAN_BUFF_NAME or not enabled or is_active:
+        if name == TUAN_BUFF_NAME or not self.is_inactive_alert_enabled(name) or is_active:
             self._inactive_since.pop(name, None)
             return
         since = self._inactive_since.get(name)
@@ -323,6 +321,17 @@ class ScanController:
         if not enabled:
             self.timer_manager.deactivate(name)
             self._inactive_since.pop(name, None)
+
+    def is_inactive_alert_enabled(self, name: str) -> bool:
+        """このバフの未使用通知を出すか。
+
+        プロファイルに記載が無いバフは buffs/{name}/config.yaml の inactive_alert に従う。
+        """
+        override = self._profile.buff_inactive_alert.get(name)
+        if override is not None:
+            return override
+        # 数値で書かれた config.yaml もあるので、真偽値に限らず 0 以外を ON とみなす
+        return bool(self.buff_configs.get(name, {}).get("inactive_alert"))
 
     def get_timers(self):
         return self.timer_manager.get_all()

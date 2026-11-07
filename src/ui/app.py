@@ -273,9 +273,17 @@ class App:
                 return
             win.destroy()
         cfg = self.controller.buff_configs.get(name, {})
-        self._buff_edit_window = BuffEditWindow(self.root, name, cfg,
-                                                on_saved=self._on_buff_added,
-                                                notifier=self.controller.notifier)
+        # 開いている間に自動判別で切り替わっても別キャラの設定を書き換えないよう、
+        # 保存先は開いた時点のプロファイルに固定する
+        profile_id = self.manager.current.id
+        self._buff_edit_window = BuffEditWindow(
+            self.root, name, cfg,
+            inactive_alert=self.controller.is_inactive_alert_enabled(name),
+            on_inactive_alert_changed=lambda enabled: self.manager.store.set_buff_inactive_alert(
+                profile_id, name, enabled),
+            on_saved=self._on_buff_added,
+            notifier=self.controller.notifier,
+        )
 
     def _close_buff_edit(self, name: str) -> None:
         win = self._buff_edit_window

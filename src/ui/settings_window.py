@@ -1,7 +1,6 @@
 """設定ウィンドウ。
 
-全プロファイル共通の設定をまとめる。メインウィンドウのタブ（バフ管理・オーバーレイ）が
-キャラクターごとの内容なのと対になる。
+全プロファイル共通の設定と、現在のプロファイルのオーバーレイ表示設定をまとめる。
 """
 
 import tkinter as tk
@@ -52,6 +51,7 @@ class SettingsWindow(tk.Toplevel):
                  manager: ProfileManager, overlay, on_buff_added: Callable[[], None]):
         super().__init__(master)
         self.controller = controller
+        self._manager = manager
         self._overlay = overlay
         self._on_buff_added = on_buff_added
 
@@ -90,13 +90,37 @@ class SettingsWindow(tk.Toplevel):
         self.minsize(self.winfo_reqwidth(), 360)
 
     def refresh(self) -> None:
-        """プロファイルが切り替わったときに呼ぶ。"""
+        """プロファイルが切り替わった／中身が変わったときに呼ぶ。"""
         self.profile_tab.refresh()
-        # 拡大率だけはキャラクターと解像度ごとの設定なので、表示を追随させる
+        self._overlay_heading.config(text=self._overlay_title())
         key = self._overlay.current_key()
         if key is not None:
             self.v_scale.set(str(self._overlay.config.scale_of(key)))
+        # 名前の変更などでも呼ばれるので、切り替わったときだけ入れ直して未保存の入力を残す
+        profile_id = self._overlay.config.current_profile_id
+        if profile_id != self._shown_profile_id:
+            self._shown_profile_id = profile_id
+            self._load_display_fields()
         self._sync_mission_row()
+
+    def _overlay_title(self) -> str:
+        return f"スキルオーバーレイ（{self._manager.current.name}）"
+
+    def _load_display_fields(self) -> None:
+        """表示設定の入力欄を現在のプロファイルの値にする。"""
+        display = self._overlay.config.display
+        self.v_gap.set(str(display.gap))
+        self.v_fps.set(str(display.fps))
+        self.v_background.set(_BACKGROUND_LABELS.get(display.background,
+                                                     _BACKGROUND_LABELS["none"]))
+        self.v_anchor.set(_ANCHOR_LABELS.get(display.anchor, _ANCHOR_LABELS["game"]))
+        self.v_opacity.set(display.opacity)
+        self._set_toggle(self.v_hover_fade, self._hover_toggle_btn, display.hover_fade)
+        self.v_hover_opacity.set(display.hover_opacity)
+        self.v_hover_opacity.set_enabled(display.hover_fade)
+        self.v_hide_key.set(_HIDE_KEY_LABELS.get(display.hide_key,
+                                                 _HIDE_KEY_LABELS[DEFAULT_KEY]))
+        self._set_toggle(self.v_mission_only, self._mission_toggle_btn, display.mission_only)
 
     def _buff_added(self) -> None:
         self._on_buff_added()
@@ -116,14 +140,14 @@ class SettingsWindow(tk.Toplevel):
             padx=18, pady=6, **flat_btn_style(bg=ACCENT, fg="white", active="#005fa3"),
         ).pack(anchor="w", pady=(18, 0))
 
-    def _group(self, parent: tk.Frame, title: str) -> tk.Frame:
+    def _group(self, parent: tk.Frame, title: str) -> tuple[tk.Frame, tk.Label]:
         """見出し付きの設定グループ。中身は grid で並べる。"""
-        tk.Label(parent, text=title, bg=BG, fg=FG, font=("", 9, "bold"), anchor="w"
-                 ).pack(fill="x", pady=(0, 6))
+        heading = tk.Label(parent, text=title, bg=BG, fg=FG, font=("", 9, "bold"), anchor="w")
+        heading.pack(fill="x", pady=(0, 6))
         box = tk.Frame(parent, bg=BG)
         box.pack(fill="x", padx=(8, 0))
         box.columnconfigure(1, weight=1)
-        return box
+        return box, heading
 
     def _entry(self, box: tk.Frame, label: str, row: int, value,
                width: int = 8, step: float = 1, minimum: float | None = None,
@@ -167,6 +191,11 @@ class SettingsWindow(tk.Toplevel):
         btn.config(text="ON" if enabled else "OFF", **toggle_btn_style(enabled))
         return enabled
 
+    @staticmethod
+    def _set_toggle(var: tk.BooleanVar, btn: tk.Button, enabled: bool) -> None:
+        var.set(enabled)
+        btn.config(text="ON" if enabled else "OFF", **toggle_btn_style(enabled))
+
     def _combobox(self, box: tk.Frame, label: str, row: int,
                   labels: dict, current: str,
                   fallback: str) -> tuple[tk.StringVar, ttk.Combobox]:
@@ -179,7 +208,7 @@ class SettingsWindow(tk.Toplevel):
         return var, combo
 
     def _build_common_group(self, parent: tk.Frame) -> None:
-        box = self._group(parent, "共通設定")
+        box, _ = self._group(parent, "共通設定")
 
         self.v_interval = self._entry(box, "スキャン間隔 (秒)", 0,
                                       self.controller._scan_interval, minimum=1)
@@ -200,40 +229,38 @@ class SettingsWindow(tk.Toplevel):
 
     def _build_overlay_group(self, parent: tk.Frame) -> None:
         cfg = self._overlay.config
-        box = self._group(parent, "スキルオーバーレイ")
+        display = cfg.display
+        self._shown_profile_id = cfg.current_profile_id
+        box, self._overlay_heading = self._group(parent, self._overlay_title())
 
         key = self._overlay.current_key()
         scale = cfg.scale_of(key) if key is not None else DEFAULT_SCALE
         # 拡大率だけは 1 刻みでは粗すぎるので 0.1 ずつ動かす
         self.v_scale = self._entry(box, "拡大率", 0, scale, width=6,
                                    step=0.1, minimum=0.1, decimals=1)
-        self.v_gap = self._entry(box, "余白 (px)", 1, cfg.gap, width=6, minimum=0)
-        self.v_fps = self._entry(box, "更新レート (fps)", 2, cfg.fps, width=6, minimum=1)
+        self.v_gap = self._entry(box, "余白 (px)", 1, display.gap, width=6, minimum=0)
+        self.v_fps = self._entry(box, "更新レート (fps)", 2, display.fps, width=6, minimum=1)
         self.v_background, _ = self._combobox(box, "背景", 3, _BACKGROUND_LABELS,
-                                              cfg.background, "none")
+                                              display.background, "none")
         self.v_anchor, _ = self._combobox(box, "配置基準", 4, _ANCHOR_LABELS,
-                                          cfg.anchor, "game")
+                                          display.anchor, "game")
 
         # 完全に消えてしまうと見失うので、通常時は下限を設ける
-        self.v_opacity = self._scale(box, "不透明度 (%)", 5, cfg.opacity, from_=10)
+        self.v_opacity = self._scale(box, "不透明度 (%)", 5, display.opacity, from_=10)
         self.v_hover_fade, self._hover_toggle_btn = self._toggle(
-            box, "マウスオーバーで薄く", 6, cfg.hover_fade, self._toggle_hover_fade)
+            box, "マウスオーバーで薄く", 6, display.hover_fade, self._toggle_hover_fade)
         self.v_hover_opacity = self._scale(
-            box, "マウスオーバー時の不透明度 (%)", 7, cfg.hover_opacity)
-        self.v_hover_opacity.set_enabled(cfg.hover_fade)
+            box, "マウスオーバー時の不透明度 (%)", 7, display.hover_opacity)
+        self.v_hover_opacity.set_enabled(display.hover_fade)
 
         # ゲーム画面を確認したいときに、押している間だけ退けられるようにする
         self.v_hide_key, _ = self._combobox(
-            box, "押下中に非表示", 8, _HIDE_KEY_LABELS, cfg.hide_key, DEFAULT_KEY)
+            box, "押下中に非表示", 8, _HIDE_KEY_LABELS, display.hide_key, DEFAULT_KEY)
 
         # ミッション中かどうかは、画面右上の EXIT ボタンの有無で判定する
         self.v_mission_only, self._mission_toggle_btn = self._toggle(
-            box, "ミッション中のみ表示", 9, cfg.mission_only, self._toggle_mission_only)
+            box, "ミッション中のみ表示", 9, display.mission_only, self._toggle_mission_only)
         self._build_mission_region_row(box, 10)
-
-        tk.Label(box, text="拡大率はキャラクターと解像度ごとの設定です。",
-                 bg=BG, fg="#777777", font=("", 8), anchor="w"
-                 ).grid(row=11, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
     def _build_mission_region_row(self, box: tk.Frame, row: int) -> None:
         self._mission_row_lbl = tk.Label(box, text="EXIT ボタン範囲", bg=BG, fg=FG)
@@ -399,6 +426,11 @@ class ValueScale(tk.Frame):
 
     def get(self) -> int:
         return self.var.get()
+
+    def set(self, value: int) -> None:
+        # 直接入力の途中だと、閉じるときの確定で値を書き戻してしまうので先に取り消す
+        self._cancel()
+        self.var.set(value)
 
     def set_enabled(self, enabled: bool) -> None:
         if not enabled:

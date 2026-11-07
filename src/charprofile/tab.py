@@ -190,7 +190,9 @@ class ProfileTab:
 
     def _duplicate(self) -> None:
         current = self._manager.current
-        self._store.duplicate(current.id, f"{current.name} のコピー")
+        profile = self._store.duplicate(current.id, f"{current.name} のコピー")
+        if profile is not None:
+            self._overlay.config.copy_display(current.id, profile.id)
         self.refresh()
         self._manager.notify_updated()
 
@@ -216,7 +218,7 @@ class ProfileTab:
 
         if was_current:
             # 削除で current が移っているので、その内容を各所へ反映させる
-            self._manager.apply(self._store.default_profile().id)
+            self._manager.reapply_current()
         self.refresh()
         self._manager.notify_updated()
 

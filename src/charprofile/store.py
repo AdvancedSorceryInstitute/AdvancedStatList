@@ -1,7 +1,8 @@
 """キャラクタープロファイルの永続化（profiles.yaml）。
 
-プロファイルが持つのは監視バフの ON/OFF と並び順、そして識別用の指紋。
-スキル表示のスロットは overlay.yaml 側がプロファイル ID で引く。
+プロファイルが持つのは監視バフの ON/OFF と並び順、未使用通知の ON/OFF、
+そして識別用の指紋。
+スキル表示のスロットと表示設定は overlay.yaml 側がプロファイル ID で引く。
 
 リストの先頭が既定プロファイル。プロファイルを削除したときなどの戻り先に使う。
 """
@@ -29,6 +30,8 @@ class CharacterProfile:
     buff_order: list[str] = field(default_factory=list)
     # 記載の無いバフは buffs/{name}/config.yaml の enabled に従う
     buff_enabled: dict[str, bool] = field(default_factory=dict)
+    # 記載の無いバフは buffs/{name}/config.yaml の inactive_alert に従う
+    buff_inactive_alert: dict[str, bool] = field(default_factory=dict)
 
 
 @dataclass
@@ -90,11 +93,14 @@ class ProfileStore:
                 if not pid:
                     continue
                 enabled = {str(k): bool(v) for k, v in (p.get("buff_enabled") or {}).items()}
+                inactive_alert = {str(k): bool(v)
+                                  for k, v in (p.get("buff_inactive_alert") or {}).items()}
                 self.profiles.append(CharacterProfile(
                     id=pid,
                     name=str(p.get("name", pid)),
                     buff_order=[str(n) for n in (p.get("buff_order") or [])],
                     buff_enabled=enabled,
+                    buff_inactive_alert=inactive_alert,
                 ))
 
             self.current_id = str(data.get("current", ""))
@@ -121,6 +127,7 @@ class ProfileStore:
                         "name": p.name,
                         "buff_order": p.buff_order,
                         "buff_enabled": p.buff_enabled,
+                        "buff_inactive_alert": p.buff_inactive_alert,
                     }
                     for p in self.profiles
                 ],
@@ -198,6 +205,7 @@ class ProfileStore:
                 name=name,
                 buff_order=list(src.buff_order),
                 buff_enabled=dict(src.buff_enabled),
+                buff_inactive_alert=dict(src.buff_inactive_alert),
             )
             self.profiles.append(profile)
         self.save()
@@ -262,6 +270,14 @@ class ProfileStore:
             profile.buff_enabled[name] = enabled
         self.save()
 
+    def set_buff_inactive_alert(self, profile_id: str, name: str, enabled: bool) -> None:
+        with self._lock:
+            profile = self.find(profile_id)
+            if profile is None:
+                return
+            profile.buff_inactive_alert[name] = enabled
+        self.save()
+
     def forget_buff(self, name: str) -> None:
         """バフの設定を全プロファイルから取り除く（バフを削除したとき）。"""
         with self._lock:
@@ -269,6 +285,7 @@ class ProfileStore:
                 if name in profile.buff_order:
                     profile.buff_order.remove(name)
                 profile.buff_enabled.pop(name, None)
+                profile.buff_inactive_alert.pop(name, None)
         self.save()
 
     # ------------------------------------------------------------ 指紋

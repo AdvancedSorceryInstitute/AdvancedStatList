@@ -32,10 +32,14 @@ def _same_file(a: Optional[Path], b: Optional[Path]) -> bool:
 
 class BuffEditWindow(tk.Toplevel):
     def __init__(self, master: tk.Misc, name: str, cfg: dict,
+                 inactive_alert: bool,
+                 on_inactive_alert_changed: Callable[[bool], None],
                  on_saved: Callable[[], None], notifier: Notifier):
         super().__init__(master)
         self.buff_name = name
         self._cfg = cfg
+        self._inactive_alert_initial = inactive_alert
+        self._on_inactive_alert_changed = on_inactive_alert_changed
         self._on_saved = on_saved
         self._notifier = notifier
         self._buff_dir = BUFFS_DIR / name
@@ -142,8 +146,7 @@ class BuffEditWindow(tk.Toplevel):
         toggle_row.pack(fill="x", padx=14, pady=4)
         self._inactive_alert_lbl = tk.Label(toggle_row, text="未使用状態を通知", bg=BG, fg=FG)
         self._inactive_alert_lbl.pack(side="left")
-        # 数値で書かれた config.yaml もあるので、真偽値に限らず 0 以外を ON とみなす
-        enabled = bool(self._cfg.get("inactive_alert"))
+        enabled = self._inactive_alert_initial
         self.v_inactive_alert = tk.BooleanVar(value=enabled)
         self._inactive_toggle_btn = tk.Button(
             toggle_row, text="ON" if enabled else "OFF",
@@ -369,8 +372,13 @@ class BuffEditWindow(tk.Toplevel):
             type_=self.v_type.get(),
             warning_threshold=int(threshold_text),
             enabled=bool(self._cfg.get("enabled", True)),
-            inactive_alert=self.v_inactive_alert.get(),
+            inactive_alert=self._cfg.get("inactive_alert"),
         )
+
+        # 変更していないバフは記録せず、config.yaml の既定値に従い続けるようにする
+        inactive_alert = self.v_inactive_alert.get()
+        if inactive_alert != self._inactive_alert_initial:
+            self._on_inactive_alert_changed(inactive_alert)
 
         self.destroy()
         self._on_saved()

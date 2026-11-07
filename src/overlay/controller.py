@@ -94,7 +94,7 @@ class OverlayController:
             self._capture = None
 
     def _interval_ms(self) -> int:
-        return max(16, int(1000 / max(1, self.config.fps)))
+        return max(16, int(1000 / max(1, self.config.display.fps)))
 
     # ------------------------------------------------------------ 外部操作
 
@@ -113,6 +113,7 @@ class OverlayController:
         if profile_id == self.config.current_profile_id:
             return
         self.config.set_current_profile(profile_id)
+        self._window.set_interval(self._interval_ms())
         self.refresh_slots()
 
     def apply_settings(self, scale: Optional[float] = None, **kwargs) -> bool:
@@ -222,14 +223,14 @@ class OverlayController:
             return
 
         # 指定キーを押している間は隠す（下に隠れた画面を見たいときの一時退避）
-        if is_key_down(cfg.hide_key):
-            self._hide(f"{key_label(cfg.hide_key)} キーで一時非表示")
+        if is_key_down(cfg.display.hide_key):
+            self._hide(f"{key_label(cfg.display.hide_key)} キーで一時非表示")
             return
 
         # ミッション外なら隠す。EXIT ボタンが未登録なら判定できないので、
         # 黙って消えるより出しっぱなしのほうが害が小さいと考えて表示を続ける
         mission_note = ""
-        if cfg.mission_only:
+        if cfg.display.mission_only:
             if not self.mission.configured(key):
                 mission_note = f"{key}: EXIT ボタンが未登録のため常時表示"
             elif not self.mission.in_mission(key, client, self._capture):
@@ -238,7 +239,7 @@ class OverlayController:
 
         images = self._capture.grab_slots(client, slots)
         items = [(s.col, s.row, im) for s, im in zip(slots, images)]
-        img, metrics = compose(items, prof.scale, cfg.gap, cfg.background)
+        img, metrics = compose(items, prof.scale, cfg.display.gap, cfg.display.background)
         self._metrics = metrics
 
         x, y = self._draw_position(client, prof, metrics.pad)
@@ -264,12 +265,12 @@ class OverlayController:
         下げた値を使う。クリック透過にしている間はマウスメッセージが届かないので、
         tick ごとにカーソル位置を見て判定する。
         """
-        cfg = self.config
-        percent = cfg.opacity
-        if cfg.hover_fade:
+        display = self.config.display
+        percent = display.opacity
+        if display.hover_fade:
             cx, cy = get_cursor_pos()
             if x <= cx < x + size[0] and y <= cy < y + size[1]:
-                percent = cfg.hover_opacity
+                percent = display.hover_opacity
         return round(percent * 255 / 100)
 
     def _hide(self, detail: str, state: str = "waiting") -> None:
@@ -304,7 +305,7 @@ class OverlayController:
                 # OFF でも場所は取り続けるので、埋まっているマスとして薄く見せる
                 disabled.append((s.col, s.row, im))
 
-        img, metrics = compose_adjust(items, prof.scale, cfg.gap, held, self._cursor, disabled)
+        img, metrics = compose_adjust(items, prof.scale, cfg.display.gap, held, self._cursor, disabled)
         self._metrics = metrics
 
         self._window.set_click_through(False)
@@ -391,7 +392,7 @@ class OverlayController:
     def _origin(self, client: dict, prof: Profile) -> tuple[int, int]:
         """グリッド左上（最初のセルの左上）の絶対座標。"""
         px, py = int(prof.position[0]), int(prof.position[1])
-        if self.config.anchor == "game":
+        if self.config.display.anchor == "game":
             return (client["left"] + px, client["top"] + py)
         return (px, py)
 
@@ -413,7 +414,7 @@ class OverlayController:
         pad = self._metrics.pad if self._metrics is not None else FRAME
         x += pad   # ウィンドウ左上 → グリッド原点
         y += pad
-        if self.config.anchor == "game":
+        if self.config.display.anchor == "game":
             x -= client["left"]
             y -= client["top"]
         self.config.set_position(key, x, y)
@@ -431,7 +432,7 @@ class OverlayController:
         targets: list[Optional[tuple[int, int, int, int]]] = [
             (s.x, s.y, s.w, s.h) for s in slots
         ]
-        if self.config.mission_only:
+        if self.config.display.mission_only:
             targets.append(self.config.mission_detect.region(key))
 
         for rect in targets:

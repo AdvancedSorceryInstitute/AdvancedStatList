@@ -7,13 +7,17 @@
 キャラクター側の切り替えは set_current_profile() で行い、以降のスロット操作は
 すべて現在のプロファイルに対して働く。
 
+表示の見せ方（DisplaySettings）もプロファイルごとに持つ。解像度キーと階層が
+混ざらないよう profiles とは別の profile_display に置き、記載の無いプロファイルや
+項目は最上位の値を既定値として使う。
+
 表示位置はグリッドのセル座標 (col, row) で持つ。位置調整モードで
 アイコンを掴んで好きなセルへ移動でき、空きセルを作ることもできる。
 """
 
 import re
 import threading
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 from typing import Optional
 
@@ -194,6 +198,23 @@ class MissionDetect:
         return key in self.regions
 
 
+@dataclass
+class DisplaySettings:
+    """プロファイルごとに変えられる表示設定。"""
+    anchor: str = "game"             # game | screen
+    gap: int = 4
+    background: str = "none"         # none | dark
+    fps: int = 10
+    opacity: int = 100               # 表示の不透明度（%）
+    hover_fade: bool = False         # カーソルが重なったら薄くする
+    hover_opacity: int = 30          # 薄くしたときの不透明度（%）
+    hide_key: str = DEFAULT_KEY      # 押している間だけ隠すキー（NONE_KEY で無効）
+    mission_only: bool = False       # ミッション中だけ表示する
+
+
+_DISPLAY_FIELDS = frozenset(f.name for f in fields(DisplaySettings))
+
+
 class OverlayConfig:
     """overlay.yaml の内容を保持する。
 
@@ -205,16 +226,10 @@ class OverlayConfig:
         self._lock = threading.RLock()
 
         self.enabled: bool = True
-        self.anchor: str = "game"        # game | screen
-        self.gap: int = 4
-        self.background: str = "none"    # none | dark
-        self.fps: int = 10
         self.slot_size: int = DEFAULT_SLOT_SIZE
-        self.opacity: int = 100          # 表示の不透明度（%）
-        self.hover_fade: bool = False    # カーソルが重なったら薄くする
-        self.hover_opacity: int = 30     # 薄くしたときの不透明度（%）
-        self.hide_key: str = DEFAULT_KEY     # 押している間だけ隠すキー（NONE_KEY で無効）
-        self.mission_only: bool = False      # ミッション中だけ表示する
+        self.defaults = DisplaySettings()
+        # キャラクタープロファイル ID -> 表示設定
+        self.displays: dict[str, DisplaySettings] = {}
         self.mission_detect = MissionDetect()
         # キャラクタープロファイル ID -> 解像度キー -> 設定
         self.profiles: dict[str, dict[str, Profile]] = {}
@@ -232,20 +247,15 @@ class OverlayConfig:
                 data = yaml.safe_load(f) or {}
 
             self.enabled = bool(data.get("enabled", self.enabled))
-            self.anchor = data.get("anchor", self.anchor)
-            self.gap = int(data.get("gap", self.gap))
-            self.background = data.get("background", self.background)
-            self.fps = max(1, min(30, int(data.get("fps", self.fps))))
             self.slot_size = int(data.get("slot_size", self.slot_size))
-            self.opacity = _clamp_percent(data.get("opacity", self.opacity))
-            self.hover_fade = bool(data.get("hover_fade", self.hover_fade))
-            self.hover_opacity = _clamp_percent(data.get("hover_opacity",
-                                                         self.hover_opacity))
-            self.hide_key = normalize_key(data.get("hide_key", self.hide_key))
+            self.defaults = self._parse_display(data, self.defaults)
             # 旧形式（ON/OFF を別項目で持っていた）は OFF を「なし」に読み替える
             if "hide_key_enabled" in data and not data["hide_key_enabled"]:
-                self.hide_key = NONE_KEY
-            self.mission_only = bool(data.get("mission_only", self.mission_only))
+                self.defaults.hide_key = NONE_KEY
+            self.displays = {
+                str(pid): self._parse_display(display or {}, self.defaults)
+                for pid, display in (data.get("profile_display") or {}).items()
+            }
             self.mission_detect = self._parse_mission(data.get("mission_detect") or {})
 
             raw = data.get("profiles") or {}
@@ -260,6 +270,21 @@ class OverlayConfig:
                     str(key): self._parse_profile(prof or {})
                     for key, prof in (per_resolution or {}).items()
                 }
+
+    @staticmethod
+    def _parse_display(data: dict, base: DisplaySettings) -> DisplaySettings:
+        """表示設定を読む。data に無い項目は base の値を使う。"""
+        return DisplaySettings(
+            anchor=data.get("anchor", base.anchor),
+            gap=int(data.get("gap", base.gap)),
+            background=data.get("background", base.background),
+            fps=max(1, min(30, int(data.get("fps", base.fps)))),
+            opacity=_clamp_percent(data.get("opacity", base.opacity)),
+            hover_fade=bool(data.get("hover_fade", base.hover_fade)),
+            hover_opacity=_clamp_percent(data.get("hover_opacity", base.hover_opacity)),
+            hide_key=normalize_key(data.get("hide_key", base.hide_key)),
+            mission_only=bool(data.get("mission_only", base.mission_only)),
+        )
 
     @staticmethod
     def _parse_mission(data: dict) -> MissionDetect:
@@ -326,16 +351,8 @@ class OverlayConfig:
         with self._lock:
             data = {
                 "enabled": self.enabled,
-                "anchor": self.anchor,
-                "gap": self.gap,
-                "background": self.background,
-                "fps": self.fps,
+                **asdict(self.defaults),
                 "slot_size": self.slot_size,
-                "opacity": self.opacity,
-                "hover_fade": self.hover_fade,
-                "hover_opacity": self.hover_opacity,
-                "hide_key": self.hide_key,
-                "mission_only": self.mission_only,
                 "mission_detect": {
                     "threshold": self.mission_detect.threshold,
                     "interval": self.mission_detect.interval,
@@ -346,6 +363,7 @@ class OverlayConfig:
                         for key, r in self.mission_detect.regions.items()
                     },
                 },
+                "profile_display": {pid: asdict(d) for pid, d in self.displays.items()},
                 "profiles": {
                     pid: {
                         key: {
@@ -382,6 +400,16 @@ class OverlayConfig:
     def current_profile_id(self) -> str:
         return self._current_pid
 
+    @property
+    def display(self) -> DisplaySettings:
+        """現在のキャラクターの表示設定。
+
+        記載が無いときは defaults そのものを返すので、呼び出し側で書き換えないこと。
+        変更は update() で行う。
+        """
+        with self._lock:
+            return self.displays.get(self._current_pid, self.defaults)
+
     def set_current_profile(self, profile_id: str) -> None:
         """キャラクターを切り替える。以降のスロット操作はこのプロファイルに働く。"""
         with self._lock:
@@ -390,8 +418,22 @@ class OverlayConfig:
     def remove_profile(self, profile_id: str) -> None:
         """キャラクタープロファイルごと設定を捨てる（プロファイル削除時）。"""
         with self._lock:
-            if self.profiles.pop(profile_id, None) is None:
+            had_slots = self.profiles.pop(profile_id, None) is not None
+            had_display = self.displays.pop(profile_id, None) is not None
+            if not had_slots and not had_display:
                 return
+        self.save()
+
+    def copy_display(self, src_id: str, dst_id: str) -> None:
+        """表示設定をコピーする（プロファイルの複製時）。
+
+        コピー元に記載が無ければ、どちらも既定値を使うので何もしなくてよい。
+        """
+        with self._lock:
+            src = self.displays.get(src_id)
+            if src is None:
+                return
+            self.displays[dst_id] = replace(src)
         self.save()
 
     def get_profile(self, key: str, create: bool = False) -> Optional[Profile]:
@@ -527,9 +569,20 @@ class OverlayConfig:
         self.save()
 
     def update(self, **kwargs) -> None:
-        """表示設定をまとめて更新して保存する。"""
+        """設定をまとめて更新して保存する。
+
+        表示設定は現在のキャラクターへ、それ以外は全体の設定へ書く。
+        """
         with self._lock:
             for name, value in kwargs.items():
-                if value is not None and hasattr(self, name):
+                if value is None:
+                    continue
+                if name in _DISPLAY_FIELDS:
+                    display = self.displays.get(self._current_pid)
+                    if display is None:
+                        display = replace(self.defaults)
+                        self.displays[self._current_pid] = display
+                    setattr(display, name, value)
+                elif hasattr(self, name):
                     setattr(self, name, value)
         self.save()

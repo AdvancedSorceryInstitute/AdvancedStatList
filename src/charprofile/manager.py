@@ -80,6 +80,15 @@ class ProfileManager:
         print(f"プロファイル切り替え: {profile.name}")
         return True
 
+    def reapply_current(self) -> None:
+        """現在のプロファイルを各コンポーネントへ適用し直す。
+
+        プロファイル削除では store 側で current_id が先に移っており、
+        apply() だと同じ ID への切り替えとして無視されるためこちらを使う。
+        GUI への通知は呼び出し側の notify_updated() に任せる。
+        """
+        self._apply_to_components(self.current)
+
     def _apply_to_components(self, profile: CharacterProfile) -> None:
         self._controller.apply_profile(profile)
         self._overlay.set_profile(profile.id)
